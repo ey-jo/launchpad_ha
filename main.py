@@ -32,28 +32,11 @@ DEVICE_INFO = {
     "manufacturer": "Novation"
 }
 
-# --- Launchpad Mk2 Label Mapping Dictionary ---
-# Maps specific (X, Y) coordinates to their official physical case labels
 SPECIAL_BUTTONS = {
-    # Top Row Round Buttons (Y = 0)
-    (0, 0): "up",
-    (1, 0): "down",
-    (2, 0): "left",
-    (3, 0): "right",
-    (4, 0): "session",
-    (5, 0): "user_1",
-    (6, 0): "user_2",
-    (7, 0): "mixer",
-    
-    # Right Column Round Buttons (X = 8)
-    (8, 1): "volume",
-    (8, 2): "pan",
-    (8, 3): "send_a",
-    (8, 4): "send_b",
-    (8, 5): "stop",
-    (8, 6): "mute",
-    (8, 7): "solo",
-    (8, 8): "record_arm"
+    (0, 0): "up", (1, 0): "down", (2, 0): "left", (3, 0): "right",
+    (4, 0): "session", (5, 0): "user_1", (6, 0): "user_2", (7, 0): "mixer",
+    (8, 1): "volume", (8, 2): "pan", (8, 3): "send_a", (8, 4): "send_b",
+    (8, 5): "stop", (8, 6): "mute", (8, 7): "solo", (8, 8): "record_arm"
 }
 
 
@@ -65,8 +48,17 @@ class LaunchpadController:
         self.lp.ButtonFlush()
         self.lp.Reset()
 
-    def set_led_xy(self, x: int, y: int, r: int, g: int, b: int, mode: str = "single"):
+    def scale_color(self, r: int, g: int, b: int, brightness: int) -> tuple[int, int, int]:
+        """Scales raw RGB values down based on Home Assistant's brightness scale (0-255)."""
+        # Brightness factor scale: 0.0 to 1.0
+        factor = brightness / 255.0
+        return int(r * factor), int(g * factor), int(b * factor)
+
+    def set_led_xy(self, x: int, y: int, r: int, g: int, b: int, brightness: int, mode: str = "single"):
+        # Apply mathematical brightness scaling before calculating the target MIDI code
+        r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
+        
         if mode == "flash":
             self.lp.LedCtrlFlashXYByCode(x, y, colorcode)
         elif mode == "pulse":
@@ -74,7 +66,8 @@ class LaunchpadController:
         else:
             self.lp.LedCtrlXYByCode(x, y, colorcode)
 
-    def display_text(self, text: str, r: int, g: int, b: int, direction_str: str):
+    def display_text(self, text: str, r: int, g: int, b: int, brightness: int, direction_str: str):
+        r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
         direction = -1 if direction_str.lower() == "right" else 1
 
@@ -85,7 +78,8 @@ class LaunchpadController:
             print(f"Scrolling string: '{text}' (Code: {colorcode}, Dir: {direction})")
             self.lp.LedCtrlString(text, colorcode, direction, 1)
 
-    def set_all_leds(self, r: int, g: int, b: int):
+    def set_all_leds(self, r: int, g: int, b: int, brightness: int):
+        r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
         self.lp.LedAllOn(colorcode)
 
@@ -108,6 +102,12 @@ class MQTTHandler:
         
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        
+        # Track state attributes internally to acknowledge states accurately back to HA
+        self.current_brightness = 255 
+        self.current_r = 255
+        self.current_g = 255
+        self.current_b = 255
 
     def start(self):
         self.client.connect(BROKER, PORT, 60)
@@ -123,6 +123,7 @@ class MQTTHandler:
         self.publish_discovery()
 
     def publish_discovery(self):
+        # Added "brightness": True to tell Home Assistant to unlock the dimmer UI slider
         light_config = {
             "name": "Matrix Display",
             "unique_id": f"{DEVICE_ID}_matrix_light",
@@ -131,6 +132,7 @@ class MQTTHandler:
             "schema": "json",
             "color_mode": True,
             "supported_color_modes": ["rgb"],
+            "brightness": True, 
             "effect": True,
             "effect_list": ["static", "flash", "pulse", "clear"],
             "device": DEVICE_INFO
@@ -152,11 +154,15 @@ class MQTTHandler:
             payload = json.loads(msg.payload.decode())
             print(f"Received Command: {payload}")
 
-            r, g, b = 255, 255, 255
+            # 1. Handle incoming brightness state payload (HA handles this in a 0-255 range)
+            if "brightness" in payload:
+                self.current_brightness = int(payload["brightness"])
+
+            # 2. Extract or update tracking color properties
             if "color" in payload:
-                r = payload["color"].get("r", 255)
-                g = payload["color"].get("g", 255)
-                b = payload["color"].get("b", 255)
+                self.current_r = payload["color"].get("r", 255)
+                self.current_g = payload["color"].get("g", 255)
+                self.current_b = payload["color"].get("b", 255)
 
             mode = payload.get("effect", "static")
             state = payload.get("state", "ON")
@@ -166,15 +172,17 @@ class MQTTHandler:
                 self.client.publish(LIGHT_STATE_TOPIC, json.dumps({"state": "OFF"}), retain=True)
                 return
 
+            # 3. Route actions using the updated brightness scaling values
             if "text" in payload:
                 text_val = str(payload["text"])
                 direction_val = payload.get("direction", "left")
-                self.lp_ctrl.display_text(text_val, r, g, b, direction_val)
+                self.lp_ctrl.display_text(text_val, self.current_r, self.current_g, self.current_b, self.current_brightness, direction_val)
             elif "x" in payload and "y" in payload:
-                self.lp_ctrl.set_led_xy(int(payload["x"]), int(payload["y"]), r, g, b, mode)
+                self.lp_ctrl.set_led_xy(int(payload["x"]), int(payload["y"]), self.current_r, self.current_g, self.current_b, self.current_brightness, mode)
             else:
-                self.lp_ctrl.set_all_leds(r, g, b)
+                self.lp_ctrl.set_all_leds(self.current_r, self.current_g, self.current_b, self.current_brightness)
 
+            # Mirror current known states to keep HA in sync
             self.client.publish(LIGHT_STATE_TOPIC, json.dumps(payload), retain=True)
 
         except Exception as e:
@@ -192,56 +200,79 @@ if __name__ == "__main__":
     c = LaunchpadController()
     mqtt_handler = MQTTHandler(c)
     
-    LONG_PRESS_THRESHOLD = 0.55
-    DOUBLE_CLICK_GAP = 0.35
+    # Timing Threshold Constraints
+    LONG_PRESS_THRESHOLD = 0.55  # 550ms
+    DOUBLE_CLICK_GAP = 0.35      # 350ms
 
+    # active_presses will now store: { button_label: {"start_time": float, "triggered": bool} }
+    active_presses = {}          
     last_released_button = None
     last_release_time = 0
 
     try:
         mqtt_handler.start()
-        print("Launchpad Matrix Engine Active with Special Labels...")
+        print("Launchpad Matrix Engine Active (Real-Time Long-Press Trigger)...")
         
         while True:
             button_data = c.get_input()
+            
             if button_data:
                 x, y, pressed = button_data
                 
-                # Dynamic translation using our dictionary lookup
+                # Resolve the button label mapping
                 if (x, y) in SPECIAL_BUTTONS:
                     button_label = SPECIAL_BUTTONS[(x, y)]
                 else:
                     button_label = f"grid_{x}_{y}"
 
-                if pressed == 1:
-                    start_time = time.time()
-                    
-                    while True:
-                        release_check = c.get_input()
-                        if not release_check or (release_check[0] == x and release_check[1] == y and release_check[2] == 0):
-                            break
-                        sleep(0.01)
+                # --- CASE 1: BUTTON PRESSED DOWN ---
+                if pressed > 0:
+                    if button_label not in active_presses:
+                        active_presses[button_label] = {
+                            "start_time": time.time(),
+                            "triggered": False
+                        }
+                        print(f"Debug: {button_label} pressed down.")
 
-                    duration = time.time() - start_time
-                    current_time = time.time()
+                # --- CASE 2: BUTTON RELEASED ---
+                elif pressed == 0:
+                    if button_label in active_presses:
+                        press_info = active_presses.pop(button_label)
+                        
+                        # If it already fired a long_press while being held, 
+                        # we just clean it up silently on release.
+                        if press_info["triggered"]:
+                            print(f"Debug: {button_label} released after long_press cleanup.")
+                            continue
+                        
+                        # Otherwise, it was a short press, calculate single vs double click
+                        current_time = time.time()
+                        
+                        # Check for Double Click
+                        if (button_label == last_released_button) and ((current_time - last_release_time) <= DOUBLE_CLICK_GAP):
+                            print(f"Fired Event: {button_label} -> double_click")
+                            mqtt_handler.send_button_event(button_label, "double_click")
+                            last_released_button = None
+                            last_release_time = 0
+                        else:
+                            # It's a Single Click
+                            print(f"Fired Event: {button_label} -> single_click")
+                            mqtt_handler.send_button_event(button_label, "single_click")
+                            last_released_button = button_label
+                            last_release_time = current_time
 
+            # --- CASE 3: REAL-TIME LONG PRESS CHECK ---
+            # Loop through all currently held buttons to see if any just crossed the threshold
+            current_time = time.time()
+            for b_label, press_info in list(active_presses.items()):
+                if not press_info["triggered"]:
+                    duration = current_time - press_info["start_time"]
                     if duration >= LONG_PRESS_THRESHOLD:
-                        print(f"Fired Event: {button_label} -> long_press")
-                        mqtt_handler.send_button_event(button_label, "long_press")
-                    elif (button_label == last_released_button) and ((current_time - last_release_time) <= DOUBLE_CLICK_GAP):
-                        print(f"Fired Event: {button_label} -> double_click")
-                        mqtt_handler.send_button_event(button_label, "double_click")
-                        last_released_button = None
-                        last_release_time = 0
-                        continue
-                    else:
-                        print(f"Fired Event: {button_label} -> single_click")
-                        mqtt_handler.send_button_event(button_label, "single_click")
+                        print(f"Fired Event (Instant Threshold): {b_label} -> long_press")
+                        mqtt_handler.send_button_event(b_label, "long_press")
+                        press_info["triggered"] = True  # Prevent it from firing repeatedly while held
 
-                    last_released_button = button_label
-                    last_release_time = current_time
-
-            sleep(0.02)
+            sleep(0.01)  # 10ms loop speed ensures tight timing accuracy
             
     except KeyboardInterrupt:
         print("\nHalting script safely...")
