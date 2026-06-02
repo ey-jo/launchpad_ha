@@ -1,0 +1,11 @@
+[project]
+name = "launchpad-ha"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "launchpad-py>=0.9.1",
+    "paho-mqtt>=2.1.0",
+    "python-dotenv>=1.2.2",
+]
