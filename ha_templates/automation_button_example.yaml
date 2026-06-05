@@ -1,0 +1,10 @@
+trigger:
+  - platform: event
+    event_type: mqtt_event
+    event_data:
+      button: "up"
+      event_type: "single_click"
+action:
+  - action: light.turn_on
+    target:
+      entity_id: light.living_room

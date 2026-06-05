@@ -1,0 +1,34 @@
+launchpad_set_led:
+  alias: "Launchpad: Set LED"
+  description: "Sets a specific coordinate on the Launchpad grid"
+  fields:
+    x:
+      description: "X Coordinate (0-8)"
+      example: 3
+    y:
+      description: "Y Coordinate (0-8)"
+      example: 4
+    r:
+      description: "Red value (0-255)"
+      example: 255
+    g:
+      description: "Green value (0-255)"
+      example: 0
+    b:
+      description: "Blue value (0-255)"
+      example: 0
+    effect:
+      description: "Effect (static, flash, pulse)"
+      example: "static"
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: device/launchpad_mk2/light/set
+        payload: >-
+          {
+            "state": "ON",
+            "x": {{ x }},
+            "y": {{ y }},
+            "color": {"r": {{ r | default(255) }}, "g": {{ g | default(255) }}, "b": {{ b | default(255) }}},
+            "effect": "{{ effect | default('static') }}"
+          }

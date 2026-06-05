@@ -1,0 +1,26 @@
+launchpad_scroll_text:
+  alias: "Launchpad: Scroll Text"
+  fields:
+    text:
+      description: "The text to display or scroll"
+      example: "HELLO"
+    direction:
+      description: "Direction: left or right"
+      example: "left"
+    r:
+      example: 255
+    g:
+      example: 255
+    b:
+      example: 255
+  sequence:
+    - action: mqtt.publish
+      data:
+        topic: device/launchpad_mk2/light/set
+        payload: >-
+          {
+            "state": "ON",
+            "text": "{{ text }}",
+            "direction": "{{ direction | default('left') }}",
+            "color": {"r": {{ r | default(255) }}, "g": {{ g | default(255) }}, "b": {{ b | default(255) }}}
+          }

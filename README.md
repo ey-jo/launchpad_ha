@@ -23,3 +23,7 @@ Start the service
 ```bash
 sudo systemctl start launchpad.service
 ```
+
+
+## Configuration in Home Assistant
+A couple of examples can be found in [ha_templates](ha_templates).

@@ -1,0 +1,39 @@
+launchpad_set_all_leds:
+  alias: "Launchpad: Set all LEDs"
+  icon: mdi:backspace
+  description: "Sets the color of the entire board or completely clears it"
+  fields:
+    action_type:
+      description: "Choose 'fill' to change all LEDs, or 'clear' to turn everything off"
+      example: "clear"
+    r:
+      example: 0
+    g:
+      example: 0
+    b:
+      example: 255
+    brightness:
+      example: 128
+  sequence:
+    - if:
+        - condition: template
+          value_template: "{{ action_type == 'clear' }}"
+      then:
+        - action: mqtt.publish
+          data:
+            topic: device/launchpad_mk2/light/set
+            payload: '{"state": "OFF"}'
+      else:
+        - action: mqtt.publish
+          data:
+            topic: device/launchpad_mk2/light/set
+            payload: >-
+              {
+                "state": "ON",
+                "color": {
+                  "r": {{ r | default(255) }},
+                  "g": {{ g | default(255) }},
+                  "b": {{ b | default(255) }}
+                },
+                "brightness": {{ brightness | default(255) }}
+              }
