@@ -131,7 +131,7 @@ class MQTTHandler:
     def publish_availability(self, availability: str):
         self.client.publish(AVAILABILITY_TOPIC, availability, retain=True)
 
-    def on_disconnect(self, client, userdata, rc):
+    def on_disconnect(self, client, userdata, rc, properties, _):
         if rc != 0:
             print(f"Unexpected MQTT disconnect (rc={rc}); broker last will will publish offline.")
         else:
