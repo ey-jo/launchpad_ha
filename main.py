@@ -24,6 +24,7 @@ EVENT_CONFIG_TOPIC = f"homeassistant/event/{DEVICE_ID}/matrix_click/config"
 LIGHT_STATE_TOPIC = f"device/{DEVICE_ID}/light/state"
 LIGHT_COMMAND_TOPIC = f"device/{DEVICE_ID}/light/set"
 EVENT_STATE_TOPIC = f"device/{DEVICE_ID}/event/state"
+AVAILABILITY_TOPIC = f"device/{DEVICE_ID}/availability"
 
 DEVICE_INFO = {
     "identifiers": [DEVICE_ID],
@@ -99,8 +100,10 @@ class MQTTHandler:
         self.lp_ctrl = controller_instance
         self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         self.client.username_pw_set(USERNAME, PASSWORD)
-        
+        self.client.will_set(AVAILABILITY_TOPIC, "offline", qos=1, retain=True)
+
         self.client.on_connect = self.on_connect
+        self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
         
         # Track state attributes internally to acknowledge states accurately back to HA
@@ -114,6 +117,7 @@ class MQTTHandler:
         self.client.loop_start()
 
     def stop(self):
+        self.publish_availability("offline")
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -121,6 +125,17 @@ class MQTTHandler:
         print(f"Connected to MQTT Broker: {reason_code}")
         self.client.subscribe(LIGHT_COMMAND_TOPIC)
         self.publish_discovery()
+        self.publish_availability("online")
+        self.client.publish(LIGHT_STATE_TOPIC, json.dumps({"state": "OFF"}), retain=True)
+
+    def publish_availability(self, availability: str):
+        self.client.publish(AVAILABILITY_TOPIC, availability, retain=True)
+
+    def on_disconnect(self, client, userdata, rc):
+        if rc != 0:
+            print(f"Unexpected MQTT disconnect (rc={rc}); broker last will will publish offline.")
+        else:
+            print("MQTT disconnected cleanly.")
 
     def publish_discovery(self):
         # Added "brightness": True to tell Home Assistant to unlock the dimmer UI slider
@@ -129,6 +144,9 @@ class MQTTHandler:
             "unique_id": f"{DEVICE_ID}_matrix_light",
             "state_topic": LIGHT_STATE_TOPIC,
             "command_topic": LIGHT_COMMAND_TOPIC,
+            "availability_topic": AVAILABILITY_TOPIC,
+            "payload_available": "online",
+            "payload_not_available": "offline",
             "schema": "json",
             "color_mode": True,
             "supported_color_modes": ["rgb"],
