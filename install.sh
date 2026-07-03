@@ -15,3 +15,4 @@ sudo python setup.py install
 sudo cp launchpad.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable launchpad.service
+sudo systemctl start launchpad.service

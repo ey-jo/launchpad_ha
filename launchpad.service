@@ -3,7 +3,7 @@ Description=MQTT Client for Launchpad
 After=network.target
 
 [Service]
-ExecStart=python /home/pi/Launchpad_ha/main.py
+ExecStart=python /home/pi/launchpad_ha/main.py
 Type=simple
 Restart=on-failure
 
