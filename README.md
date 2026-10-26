@@ -32,3 +32,26 @@ sudo systemctl restart launchpad.service
 
 ## Configuration in Home Assistant
 A couple of examples can be found in [ha_templates](ha_templates).
+
+The MQTT device creates a **Button Lock** entity, a **Lock Button** selector, and
+an **Auto Lock Timer** number entity through MQTT discovery. Select any Launchpad
+button (or **Disabled**) in **Lock Button**. While locked, button events are
+suppressed; hold the selected button to unlock, and press it once to lock again.
+The timer is in seconds and locks the device again after it has been unlocked;
+set it to `0` to disable automatic locking. These settings can be changed at any
+time in Home Assistant and are saved in `device_settings.json` beside `main.py`.
+
+The initial values can also be set in `.env` with `LOCK_BUTTON` and
+`AUTO_LOCK_SECONDS`. The device starts locked; it can be unlocked from Home
+Assistant or with a long press of the selected button.
+
+Lock discovery, event handling, and persisted lock settings are implemented in
+[`lock_manager.py`](lock_manager.py); `main.py` delegates lock messages and
+button events to it. Press classification (single, double, and long presses) is
+handled separately in [`button_events.py`](button_events.py). A regular
+single-click event is sent after the double-click window expires so a double
+click does not also trigger a single-click automation; the configured lock
+button still locks immediately on a single press.
+
+The sample `.env.example` uses `DEVICE_ID=launchpad`, which is also the device
+ID used in the MQTT topics in [ha_templates](ha_templates).
