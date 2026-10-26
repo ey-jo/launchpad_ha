@@ -6,6 +6,8 @@ import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 from launchpad_py import LaunchpadMk2
 from color import get_closest_color
+from button_events import ButtonEventProcessor
+from lock_manager import LockManager
 
 # Load environment variables
 load_dotenv()
@@ -105,6 +107,15 @@ class MQTTHandler:
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
+        self.lock_manager = LockManager(
+            self.client,
+            DEVICE_ID,
+            DEVICE_INFO,
+            AVAILABILITY_TOPIC,
+            SPECIAL_BUTTONS,
+            os.environ.get("LOCK_BUTTON", "up"),
+            int(os.environ.get("AUTO_LOCK_SECONDS", "0"))
+        )
         
         # Track state attributes internally to acknowledge states accurately back to HA
         self.current_brightness = 255 
@@ -124,9 +135,13 @@ class MQTTHandler:
     def on_connect(self, client, userdata, flags, reason_code, properties):
         print(f"Connected to MQTT Broker: {reason_code}")
         self.client.subscribe(LIGHT_COMMAND_TOPIC)
+        self.client.subscribe(self.lock_manager.command_topic)
+        self.client.subscribe(self.lock_manager.button_command_topic)
+        self.client.subscribe(self.lock_manager.timer_command_topic)
         self.publish_discovery()
         self.publish_availability("online")
         self.client.publish(LIGHT_STATE_TOPIC, json.dumps({"state": "OFF"}), retain=True)
+        self.lock_manager.publish_state()
 
     def publish_availability(self, availability: str):
         self.client.publish(AVAILABILITY_TOPIC, availability, retain=True)
@@ -165,10 +180,14 @@ class MQTTHandler:
             "device": DEVICE_INFO
         }
         self.client.publish(EVENT_CONFIG_TOPIC, json.dumps(event_config), retain=True)
+        self.lock_manager.publish_discovery()
         print("Home Assistant Discovery Configurations Sent.")
 
     def on_message(self, client, userdata, msg):
         try:
+            if self.lock_manager.on_message(msg):
+                return
+
             payload = json.loads(msg.payload.decode())
             print(f"Received Command: {payload}")
 
@@ -204,28 +223,16 @@ class MQTTHandler:
             self.client.publish(LIGHT_STATE_TOPIC, json.dumps(payload), retain=True)
 
         except Exception as e:
-            print(f"Error parsing incoming JSON control schema: {e}")
+            print(f"Error handling MQTT message on {msg.topic}: {e}")
 
     def send_button_event(self, button_label: str, event_type: str):
-        payload = {
-            "event_type": event_type,
-            "button": button_label
-        }
-        self.client.publish(EVENT_STATE_TOPIC, json.dumps(payload))
+        self.lock_manager.send_button_event(button_label, event_type)
 
 
 if __name__ == "__main__":
     c = LaunchpadController()
     mqtt_handler = MQTTHandler(c)
-    
-    # Timing Threshold Constraints
-    LONG_PRESS_THRESHOLD = 0.55  # 550ms
-    DOUBLE_CLICK_GAP = 0.35      # 350ms
-
-    # active_presses will now store: { button_label: {"start_time": float, "triggered": bool} }
-    active_presses = {}          
-    last_released_button = None
-    last_release_time = 0
+    button_events = ButtonEventProcessor(SPECIAL_BUTTONS, mqtt_handler.send_button_event)
 
     try:
         mqtt_handler.start()
@@ -233,63 +240,9 @@ if __name__ == "__main__":
         
         while True:
             button_data = c.get_input()
-            
-            if button_data:
-                x, y, pressed = button_data
-                
-                # Resolve the button label mapping
-                if (x, y) in SPECIAL_BUTTONS:
-                    button_label = SPECIAL_BUTTONS[(x, y)]
-                else:
-                    button_label = f"grid_{x}_{y}"
-
-                # --- CASE 1: BUTTON PRESSED DOWN ---
-                if pressed > 0:
-                    if button_label not in active_presses:
-                        active_presses[button_label] = {
-                            "start_time": time.time(),
-                            "triggered": False
-                        }
-                        print(f"Debug: {button_label} pressed down.")
-
-                # --- CASE 2: BUTTON RELEASED ---
-                elif pressed == 0:
-                    if button_label in active_presses:
-                        press_info = active_presses.pop(button_label)
-                        
-                        # If it already fired a long_press while being held, 
-                        # we just clean it up silently on release.
-                        if press_info["triggered"]:
-                            print(f"Debug: {button_label} released after long_press cleanup.")
-                            continue
-                        
-                        # Otherwise, it was a short press, calculate single vs double click
-                        current_time = time.time()
-                        
-                        # Check for Double Click
-                        if (button_label == last_released_button) and ((current_time - last_release_time) <= DOUBLE_CLICK_GAP):
-                            print(f"Fired Event: {button_label} -> double_click")
-                            mqtt_handler.send_button_event(button_label, "double_click")
-                            last_released_button = None
-                            last_release_time = 0
-                        else:
-                            # It's a Single Click
-                            print(f"Fired Event: {button_label} -> single_click")
-                            mqtt_handler.send_button_event(button_label, "single_click")
-                            last_released_button = button_label
-                            last_release_time = current_time
-
-            # --- CASE 3: REAL-TIME LONG PRESS CHECK ---
-            # Loop through all currently held buttons to see if any just crossed the threshold
-            current_time = time.time()
-            for b_label, press_info in list(active_presses.items()):
-                if not press_info["triggered"]:
-                    duration = current_time - press_info["start_time"]
-                    if duration >= LONG_PRESS_THRESHOLD:
-                        print(f"Fired Event (Instant Threshold): {b_label} -> long_press")
-                        mqtt_handler.send_button_event(b_label, "long_press")
-                        press_info["triggered"] = True  # Prevent it from firing repeatedly while held
-
+            button_events.handle_input(button_data, mqtt_handler.lock_manager.lock_button)
+            button_events.check_timers()
+            mqtt_handler.lock_manager.check_auto_lock()
             sleep(0.01)  # 10ms loop speed ensures tight timing accuracy
             
     except KeyboardInterrupt:

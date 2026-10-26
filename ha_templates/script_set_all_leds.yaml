@@ -21,12 +21,12 @@ launchpad_set_all_leds:
       then:
         - action: mqtt.publish
           data:
-            topic: device/launchpad_mk2/light/set
+            topic: device/launchpad/light/set
             payload: '{"state": "OFF"}'
       else:
         - action: mqtt.publish
           data:
-            topic: device/launchpad_mk2/light/set
+            topic: device/launchpad/light/set
             payload: >-
               {
                 "state": "ON",

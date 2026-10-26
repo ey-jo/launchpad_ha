@@ -23,7 +23,7 @@ launchpad_set_led:
   sequence:
     - action: mqtt.publish
       data:
-        topic: device/launchpad_mk2/light/set
+        topic: device/launchpad/light/set
         payload: >-
           {
             "state": "ON",

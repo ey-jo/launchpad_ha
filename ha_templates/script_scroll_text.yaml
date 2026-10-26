@@ -16,7 +16,7 @@ launchpad_scroll_text:
   sequence:
     - action: mqtt.publish
       data:
-        topic: device/launchpad_mk2/light/set
+        topic: device/launchpad/light/set
         payload: >-
           {
             "state": "ON",
