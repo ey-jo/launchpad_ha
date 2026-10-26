@@ -45,6 +45,9 @@ The initial values can also be set in `.env` with `LOCK_BUTTON` and
 `AUTO_LOCK_SECONDS`. The device starts locked; it can be unlocked from Home
 Assistant or with a long press of the selected button.
 
+If the MQTT broker disconnects, all Launchpad LEDs blink red until the
+connection is restored.
+
 Lock discovery, event handling, and persisted lock settings are implemented in
 [`lock_manager.py`](lock_manager.py); `main.py` delegates lock messages and
 button events to it. Press classification (single, double, and long presses) is

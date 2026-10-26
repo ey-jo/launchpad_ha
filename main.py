@@ -1,6 +1,7 @@
 import os
 import json
 import time
+from threading import Event
 from time import sleep
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
@@ -50,6 +51,8 @@ class LaunchpadController:
             raise RuntimeError("Could not open Launchpad Mk2 connection.")
         self.lp.ButtonFlush()
         self.lp.Reset()
+        self._red_blink_on = False
+        self._last_red_blink = 0.0
 
     def scale_color(self, r: int, g: int, b: int, brightness: int) -> tuple[int, int, int]:
         """Scales raw RGB values down based on Home Assistant's brightness scale (0-255)."""
@@ -89,6 +92,24 @@ class LaunchpadController:
     def clear(self):
         self.lp.Reset()
 
+    def blink_all_leds_red(self, enabled: bool):
+        if not enabled:
+            if self._red_blink_on:
+                self.clear()
+                self._red_blink_on = False
+            return
+
+        current_time = time.monotonic()
+        if current_time - self._last_red_blink < 0.5:
+            return
+
+        self._last_red_blink = current_time
+        self._red_blink_on = not self._red_blink_on
+        if self._red_blink_on:
+            self.set_all_leds(255, 0, 0, 255)
+        else:
+            self.clear()
+
     def get_input(self) -> tuple[int, int, int] | None:
         state = self.lp.ButtonStateXY()
         if state and len(state) >= 3:
@@ -103,6 +124,7 @@ class MQTTHandler:
         self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         self.client.username_pw_set(USERNAME, PASSWORD)
         self.client.will_set(AVAILABILITY_TOPIC, "offline", qos=1, retain=True)
+        self.connected = Event()
 
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
@@ -133,6 +155,11 @@ class MQTTHandler:
         self.client.disconnect()
 
     def on_connect(self, client, userdata, flags, reason_code, properties):
+        if reason_code != 0:
+            print(f"Failed to connect to MQTT Broker: {reason_code}")
+            return
+
+        self.connected.set()
         print(f"Connected to MQTT Broker: {reason_code}")
         self.client.subscribe(LIGHT_COMMAND_TOPIC)
         self.client.subscribe(self.lock_manager.command_topic)
@@ -147,6 +174,7 @@ class MQTTHandler:
         self.client.publish(AVAILABILITY_TOPIC, availability, retain=True)
 
     def on_disconnect(self, client, userdata, rc, properties, _):
+        self.connected.clear()
         if rc != 0:
             print(f"Unexpected MQTT disconnect (rc={rc}); broker last will will publish offline.")
         else:
@@ -228,6 +256,9 @@ class MQTTHandler:
     def send_button_event(self, button_label: str, event_type: str):
         self.lock_manager.send_button_event(button_label, event_type)
 
+    def update_connection_indicator(self):
+        self.lp_ctrl.blink_all_leds_red(not self.connected.is_set())
+
 
 if __name__ == "__main__":
     c = LaunchpadController()
@@ -243,6 +274,7 @@ if __name__ == "__main__":
             button_events.handle_input(button_data, mqtt_handler.lock_manager.lock_button)
             button_events.check_timers()
             mqtt_handler.lock_manager.check_auto_lock()
+            mqtt_handler.update_connection_indicator()
             sleep(0.01)  # 10ms loop speed ensures tight timing accuracy
             
     except KeyboardInterrupt:
