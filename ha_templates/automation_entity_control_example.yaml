@@ -1,0 +1,13 @@
+- id: launchpad_cover_row
+  alias: "Launchpad: cover position from first row"
+  use_blueprint:
+    path: launchpad/entity_control.yaml
+    input:
+      event_topic: device/launchpad/event/state
+      command_topic: device/launchpad/light/set
+      entity: cover.example_window
+      layout: row
+      axis_index: 0
+      event_type: single_click
+      on_color: [0, 255, 0]
+      off_color: [0, 0, 0]

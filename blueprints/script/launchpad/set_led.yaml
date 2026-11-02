@@ -1,19 +1,29 @@
 blueprint:
-  name: Launchpad - Set LED
-  description: Set one Launchpad LED to a color and effect.
+  name: Launchpad - Static color
+  description: Set a static color on one button, a row, a column, or the whole board.
   domain: script
   input:
     command_topic:
       name: MQTT command topic
-      description: Change "launchpad" if your DEVICE_ID is different.
       default: device/launchpad/light/set
       selector:
         text:
 
 fields:
-  x:
-    name: X coordinate
+  layout:
+    name: Display layout
     required: true
+    default: button
+    selector:
+      select:
+        options:
+          - button
+          - row
+          - column
+          - all
+  x:
+    name: X coordinate or column
+    default: 0
     selector:
       number:
         min: 0
@@ -21,43 +31,21 @@ fields:
         step: 1
         mode: box
   y:
-    name: Y coordinate
-    required: true
+    name: Y coordinate or row
+    default: 0
     selector:
       number:
         min: 0
         max: 8
         step: 1
         mode: box
-  r:
-    name: Red
-    default: 255
+  color:
+    name: RGB color
+    default: [0, 255, 0]
     selector:
-      number:
-        min: 0
-        max: 255
-        step: 1
-        mode: slider
-  g:
-    name: Green
-    default: 255
-    selector:
-      number:
-        min: 0
-        max: 255
-        step: 1
-        mode: slider
-  b:
-    name: Blue
-    default: 255
-    selector:
-      number:
-        min: 0
-        max: 255
-        step: 1
-        mode: slider
+      color_rgb:
   effect:
-    name: Effect
+    name: LED effect
     default: static
     selector:
       select:
@@ -67,18 +55,28 @@ fields:
           - pulse
 
 sequence:
-  - action: mqtt.publish
-    data:
-      topic: !input command_topic
-      payload: >-
-        {
-          "state": "ON",
-          "x": {{ x | int }},
-          "y": {{ y | int }},
-          "color": {
-            "r": {{ r | default(255) | int }},
-            "g": {{ g | default(255) | int }},
-            "b": {{ b | default(255) | int }}
-          },
-          "effect": {{ effect | default('static') | tojson }}
-        }
+  - repeat:
+      for_each: "{{ range(81) | list }}"
+      sequence:
+        - variables:
+            pixel_x: "{{ repeat.item % 9 }}"
+            pixel_y: "{{ repeat.item // 9 }}"
+        - if:
+            - condition: template
+              value_template: >
+                {{ layout == 'all'
+                   or (layout == 'row' and pixel_y | int == y | int)
+                   or (layout == 'column' and pixel_x | int == x | int)
+                   or (layout == 'button' and pixel_x | int == x | int and pixel_y | int == y | int) }}
+          then:
+            - action: mqtt.publish
+              data:
+                topic: !input command_topic
+                payload: >-
+                  {{ {
+                    'state': 'ON',
+                    'x': pixel_x | int,
+                    'y': pixel_y | int,
+                    'color': {'r': color[0] | int, 'g': color[1] | int, 'b': color[2] | int},
+                    'effect': effect | default('static')
+                  } | tojson }}

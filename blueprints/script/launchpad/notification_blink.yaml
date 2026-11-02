@@ -1,0 +1,118 @@
+blueprint:
+  name: Launchpad - Notification blink
+  description: Blink or pulse one button, a row, a column, or the whole board for a limited time.
+  domain: script
+  input:
+    command_topic:
+      name: MQTT command topic
+      default: device/launchpad/light/set
+      selector:
+        text:
+
+fields:
+  layout:
+    name: Display layout
+    required: true
+    default: row
+    selector:
+      select:
+        options:
+          - button
+          - row
+          - column
+          - all
+  x:
+    name: X coordinate or column
+    default: 0
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  y:
+    name: Y coordinate or row
+    default: 0
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  color:
+    name: Blink color
+    default: [255, 0, 0]
+    selector:
+      color_rgb:
+  effect:
+    name: Blink effect
+    default: flash
+    selector:
+      select:
+        options:
+          - flash
+          - pulse
+  duration_seconds:
+    name: Duration
+    default: 5
+    selector:
+      number:
+        min: 1
+        max: 3600
+        step: 1
+        unit_of_measurement: s
+        mode: box
+
+sequence:
+  - repeat:
+      for_each: "{{ range(81) | list }}"
+      sequence:
+        - variables:
+            pixel_x: "{{ repeat.item % 9 }}"
+            pixel_y: "{{ repeat.item // 9 }}"
+        - if:
+            - condition: template
+              value_template: >
+                {{ layout == 'all'
+                   or (layout == 'row' and pixel_y | int == y | int)
+                   or (layout == 'column' and pixel_x | int == x | int)
+                   or (layout == 'button' and pixel_x | int == x | int and pixel_y | int == y | int) }}
+          then:
+            - action: mqtt.publish
+              data:
+                topic: !input command_topic
+                payload: >-
+                  {{ {
+                    'state': 'ON',
+                    'x': pixel_x | int,
+                    'y': pixel_y | int,
+                    'color': {'r': color[0] | int, 'g': color[1] | int, 'b': color[2] | int},
+                    'effect': effect
+                  } | tojson }}
+  - delay:
+      seconds: "{{ duration_seconds | int }}"
+  - repeat:
+      for_each: "{{ range(81) | list }}"
+      sequence:
+        - variables:
+            pixel_x: "{{ repeat.item % 9 }}"
+            pixel_y: "{{ repeat.item // 9 }}"
+        - if:
+            - condition: template
+              value_template: >
+                {{ layout == 'all'
+                   or (layout == 'row' and pixel_y | int == y | int)
+                   or (layout == 'column' and pixel_x | int == x | int)
+                   or (layout == 'button' and pixel_x | int == x | int and pixel_y | int == y | int) }}
+          then:
+            - action: mqtt.publish
+              data:
+                topic: !input command_topic
+                payload: >-
+                  {{ {
+                    'state': 'ON',
+                    'x': pixel_x | int,
+                    'y': pixel_y | int,
+                    'color': {'r': 0, 'g': 0, 'b': 0},
+                    'effect': 'static'
+                  } | tojson }}
