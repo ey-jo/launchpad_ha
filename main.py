@@ -8,16 +8,33 @@ from dotenv import load_dotenv
 from launchpad_py import LaunchpadMk2
 from color import get_closest_color
 from button_events import ButtonEventProcessor
-from lock_manager import LockManager
+from lock_manager import LockManager, parse_auto_lock_seconds
 
 # Load environment variables
 load_dotenv()
 BROKER = os.environ.get("BROKER")
-PORT = int(os.environ.get("PORT", 1883))
+PORT = os.environ.get("PORT", "1883")
 USERNAME = os.environ.get("USERNAME")
 PASSWORD = os.environ.get("PASSWORD")
 DEVICE_ID = os.environ.get("DEVICE_ID", "launchpad_mk2")
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Launchpad Matrix Controller")
+
+
+def validate_mqtt_settings(broker: str | None, port: str) -> tuple[str, int]:
+    broker = (broker or "").strip()
+    if not broker or any(character.isspace() for character in broker):
+        raise ValueError("BROKER must be set to a valid MQTT broker hostname or IP address.")
+
+    try:
+        parsed_port = int(port)
+    except ValueError as exc:
+        raise ValueError("PORT must be an integer between 1 and 65535.") from exc
+
+    if not 1 <= parsed_port <= 65535:
+        raise ValueError("PORT must be an integer between 1 and 65535.")
+
+    return broker, parsed_port
+
 
 # MQTT Discovery Topics
 LIGHT_CONFIG_TOPIC = f"homeassistant/light/{DEVICE_ID}/matrix_light/config"
@@ -136,7 +153,7 @@ class MQTTHandler:
             AVAILABILITY_TOPIC,
             SPECIAL_BUTTONS,
             os.environ.get("LOCK_BUTTON", "up"),
-            int(os.environ.get("AUTO_LOCK_SECONDS", "0"))
+            parse_auto_lock_seconds(os.environ.get("AUTO_LOCK_SECONDS", "0"))
         )
         
         # Track state attributes internally to acknowledge states accurately back to HA
@@ -146,7 +163,8 @@ class MQTTHandler:
         self.current_b = 255
 
     def start(self):
-        self.client.connect(BROKER, PORT, 60)
+        broker, port = validate_mqtt_settings(BROKER, PORT)
+        self.client.connect(broker, port, 60)
         self.client.loop_start()
 
     def stop(self):

@@ -1,0 +1,83 @@
+blueprint:
+  name: Launchpad - Set all LEDs
+  description: Fill the Launchpad with a color or clear all LEDs.
+  domain: script
+  input:
+    command_topic:
+      name: MQTT command topic
+      description: Change "launchpad" if your DEVICE_ID is different.
+      default: device/launchpad/light/set
+      selector:
+        text:
+
+fields:
+  action_type:
+    name: Action
+    required: true
+    selector:
+      select:
+        options:
+          - label: Fill with color
+            value: fill
+          - label: Clear
+            value: clear
+  r:
+    name: Red
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  g:
+    name: Green
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  b:
+    name: Blue
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  brightness:
+    name: Brightness
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+
+sequence:
+  - if:
+      - condition: template
+        value_template: "{{ action_type == 'clear' }}"
+    then:
+      - action: mqtt.publish
+        data:
+          topic: !input command_topic
+          payload: '{"state": "OFF"}'
+    else:
+      - action: mqtt.publish
+        data:
+          topic: !input command_topic
+          payload: >-
+            {
+              "state": "ON",
+              "color": {
+                "r": {{ r | default(255) | int }},
+                "g": {{ g | default(255) | int }},
+                "b": {{ b | default(255) | int }}
+              },
+              "brightness": {{ brightness | default(255) | int }}
+            }

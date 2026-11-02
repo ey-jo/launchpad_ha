@@ -3,9 +3,23 @@ import os
 import time
 from pathlib import Path
 
-
 MAX_AUTO_LOCK_SECONDS = 86400
 SETTINGS_FILE = Path(__file__).with_name("device_settings.json")
+
+
+def parse_auto_lock_seconds(value: object) -> int:
+    try:
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError
+        seconds = int(value)
+    except ValueError:
+        print(f"Invalid auto-lock timer {value!r}; falling back to 0 seconds.")
+        return 0
+
+    if not 0 <= seconds <= MAX_AUTO_LOCK_SECONDS:
+        print(f"Invalid auto-lock timer {value!r}; falling back to 0 seconds.")
+        return 0
+    return seconds
 
 
 class LockManager:
@@ -14,7 +28,6 @@ class LockManager:
         self.client = client
         self.device_info = device_info
         self.availability_topic = availability_topic
-
         self.config_topic = f"homeassistant/lock/{device_id}/button_lock/config"
         self.button_config_topic = f"homeassistant/select/{device_id}/lock_button/config"
         self.timer_config_topic = f"homeassistant/number/{device_id}/auto_lock_seconds/config"
@@ -175,16 +188,12 @@ class LockManager:
             if not isinstance(settings, dict):
                 raise ValueError(f"{SETTINGS_FILE} must contain a JSON object.")
             self.lock_button = settings.get("lock_button", self.lock_button)
-            self.auto_lock_seconds = int(
+            self.auto_lock_seconds = parse_auto_lock_seconds(
                 settings.get("auto_lock_seconds", self.auto_lock_seconds)
             )
 
         if self.lock_button not in self.button_options:
             raise ValueError(f"LOCK_BUTTON must be one of {self.button_options}.")
-        if not 0 <= self.auto_lock_seconds <= MAX_AUTO_LOCK_SECONDS:
-            raise ValueError(
-                f"AUTO_LOCK_SECONDS must be between 0 and {MAX_AUTO_LOCK_SECONDS}."
-            )
 
     def save_settings(self):
         settings = {

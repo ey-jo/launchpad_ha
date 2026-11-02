@@ -1,0 +1,128 @@
+blueprint:
+  name: Launchpad button action
+  description: >
+    Run Home Assistant actions when a Launchpad button is pressed. Choose the
+    button and press type, then configure any actions in the visual editor.
+  domain: automation
+  input:
+    event_topic:
+      name: Launchpad event topic
+      description: Change this if DEVICE_ID is different from "launchpad".
+      default: device/launchpad/event/state
+      selector:
+        text:
+    button:
+      name: Button
+      selector:
+        select:
+          options:
+            - up
+            - down
+            - left
+            - right
+            - session
+            - user_1
+            - user_2
+            - mixer
+            - volume
+            - pan
+            - send_a
+            - send_b
+            - stop
+            - mute
+            - solo
+            - record_arm
+            - grid_8_0
+            - grid_0_1
+            - grid_1_1
+            - grid_2_1
+            - grid_3_1
+            - grid_4_1
+            - grid_5_1
+            - grid_6_1
+            - grid_7_1
+            - grid_0_2
+            - grid_1_2
+            - grid_2_2
+            - grid_3_2
+            - grid_4_2
+            - grid_5_2
+            - grid_6_2
+            - grid_7_2
+            - grid_0_3
+            - grid_1_3
+            - grid_2_3
+            - grid_3_3
+            - grid_4_3
+            - grid_5_3
+            - grid_6_3
+            - grid_7_3
+            - grid_0_4
+            - grid_1_4
+            - grid_2_4
+            - grid_3_4
+            - grid_4_4
+            - grid_5_4
+            - grid_6_4
+            - grid_7_4
+            - grid_0_5
+            - grid_1_5
+            - grid_2_5
+            - grid_3_5
+            - grid_4_5
+            - grid_5_5
+            - grid_6_5
+            - grid_7_5
+            - grid_0_6
+            - grid_1_6
+            - grid_2_6
+            - grid_3_6
+            - grid_4_6
+            - grid_5_6
+            - grid_6_6
+            - grid_7_6
+            - grid_0_7
+            - grid_1_7
+            - grid_2_7
+            - grid_3_7
+            - grid_4_7
+            - grid_5_7
+            - grid_6_7
+            - grid_7_7
+            - grid_0_8
+            - grid_1_8
+            - grid_2_8
+            - grid_3_8
+            - grid_4_8
+            - grid_5_8
+            - grid_6_8
+            - grid_7_8
+    event_type:
+      name: Press type
+      selector:
+        select:
+          options:
+            - single_click
+            - double_click
+            - long_press
+    actions:
+      name: Actions
+      description: Choose actions from Home Assistant's visual editor.
+      selector:
+        action:
+
+variables:
+  target_button: !input button
+  target_event_type: !input event_type
+
+trigger:
+  - platform: mqtt
+    topic: !input event_topic
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.payload_json.button == target_button
+         and trigger.payload_json.event_type == target_event_type }}
+
+action: !input actions

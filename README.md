@@ -35,7 +35,80 @@ sudo systemctl restart launchpad.service
 ```
 
 ## Configuration in Home Assistant
-A couple of examples can be found in [ha_templates](ha_templates).
+The recommended setup uses the reusable blueprints below. The files in
+[ha_templates](ha_templates) are optional copy-paste examples; you do not need
+to install or use them when you use the blueprints.
+
+### Install the blueprints
+
+Home Assistant must have its MQTT integration set up and connected to the same
+broker as the Launchpad controller.
+
+Copy the blueprint files from this repository into your Home Assistant
+configuration directory, preserving these paths:
+
+```text
+<Home Assistant config>/
+└── blueprints/
+    ├── automation/
+    │   └── launchpad/
+    │       └── button_action.yaml
+    └── script/
+        └── launchpad/
+            ├── scroll_text.yaml
+            ├── set_all_leds.yaml
+            └── set_led.yaml
+```
+
+For example, with the File editor add-on, create the folders under
+`/config/blueprints/` and upload or paste the files into them. You can also
+transfer the files using a network share or another file-management method.
+After copying, open **Settings → Automations & scenes → Blueprints** and reload
+the blueprints if that option is available; otherwise restart Home Assistant.
+
+### Control lights, covers, switches, and other devices
+
+Use the [Launchpad button action blueprint](blueprints/automation/launchpad/button_action.yaml)
+to create one automation per button/press combination:
+
+1. In **Settings → Automations & scenes → Blueprints**, find **Launchpad button
+   action** and choose **Create automation**.
+2. Select the Launchpad button and **single click**, **double click**, or
+   **long press**.
+3. In **Actions**, choose **Add action** and select the device or action you
+   want. For example, use a light's **Toggle** action, **Turn on** with a
+   brightness level, a cover's **Open** or **Close** action, or a switch,
+   scene, or script action.
+4. Save the automation. Repeat with a different button or press type to add
+   more controls.
+
+The event topic defaults to `device/launchpad/event/state`. If your `.env` has
+a different `DEVICE_ID`, replace `launchpad` in the topic with that ID.
+
+The controller starts locked. With the default `LOCK_BUTTON="up"`, hold the
+Launchpad's **up** button to unlock it; a single press locks it again. While
+locked, button events do not trigger automations. You can change the lock
+button or disable it using the **Lock Button** entity in Home Assistant. Do not
+assign an automation to the active lock button unless you disable or change the
+lock button.
+
+### Control the Launchpad display
+
+Create scripts from these script blueprints in **Settings → Automations &
+scenes → Blueprints**:
+
+- [`Set LED`](blueprints/script/launchpad/set_led.yaml): set one grid position,
+  color, and effect.
+- [`Set all LEDs`](blueprints/script/launchpad/set_all_leds.yaml): fill the
+  board with a color and brightness, or clear it.
+- [`Scroll text`](blueprints/script/launchpad/scroll_text.yaml): display text
+  with a chosen direction and color.
+
+For each blueprint, choose **Create script**, set the MQTT command topic, and
+save. The default is `device/launchpad/light/set`; replace `launchpad` with
+your `DEVICE_ID` if needed. The created scripts can be run from Home Assistant
+or called by automations. Their fields let you enter positions, colors,
+brightness, effects, and text.
 
 The MQTT device creates a **Button Lock** entity, a **Lock Button** selector, and
 an **Auto Lock Timer** number entity through MQTT discovery. Select any Launchpad
