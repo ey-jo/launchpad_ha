@@ -1,0 +1,164 @@
+blueprint:
+  name: Launchpad - Color pattern
+  description: Show a spatial color sequence across a layout or cycle colors over time.
+  domain: script
+  input:
+    command_topic:
+      name: MQTT command topic
+      default: device/launchpad/light/set
+      selector:
+        text:
+
+fields:
+  layout:
+    name: Display layout
+    required: true
+    default: row
+    selector:
+      select:
+        options:
+          - button
+          - row
+          - column
+          - all
+  x:
+    name: X coordinate or column
+    default: 0
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  y:
+    name: Y coordinate or row
+    default: 0
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  colors:
+    name: RGB color sequence
+    description: JSON list of RGB lists, e.g. [[255,0,0],[0,255,0],[0,0,255]].
+    required: true
+    selector:
+      text:
+        multiline: true
+  pattern_mode:
+    name: Pattern mode
+    required: true
+    default: spatial
+    selector:
+      select:
+        options:
+          - spatial
+          - timed
+  step_seconds:
+    name: Time between timed colors
+    default: 1
+    selector:
+      number:
+        min: 1
+        max: 10
+        step: 1
+        unit_of_measurement: s
+        mode: box
+  duration_seconds:
+    name: Timed pattern duration
+    default: 10
+    selector:
+      number:
+        min: 1
+        max: 60
+        step: 1
+        unit_of_measurement: s
+        mode: box
+  effect:
+    name: Spatial LED effect
+    default: static
+    selector:
+      select:
+        options:
+          - static
+          - flash
+          - pulse
+
+sequence:
+  - variables:
+      palette: "{{ colors | from_json }}"
+  - if:
+      - condition: template
+        value_template: "{{ palette | length == 0 }}"
+    then:
+      - stop: "Color sequence must contain at least one RGB color."
+        error: true
+  - if:
+      - condition: template
+        value_template: "{{ pattern_mode == 'spatial' }}"
+    then:
+      - repeat:
+          for_each: "{{ range(81) | list }}"
+          sequence:
+            - variables:
+                pixel_x: "{{ repeat.item % 9 }}"
+                pixel_y: "{{ repeat.item // 9 }}"
+                pattern_index: >
+                  {% if layout == 'row' %}{{ pixel_x | int }}
+                  {% elif layout == 'column' %}{{ pixel_y | int }}
+                  {% elif layout == 'all' %}{{ repeat.item }}
+                  {% else %}0{% endif %}
+                pattern_color: "{{ palette[(pattern_index | int) % (palette | length)] }}"
+            - if:
+                - condition: template
+                  value_template: >
+                    {{ (layout == 'all')
+                       or (layout == 'row' and pixel_y | int == y | int)
+                       or (layout == 'column' and pixel_x | int == x | int)
+                       or (layout == 'button' and pixel_x | int == x | int and pixel_y | int == y | int) }}
+              then:
+                - action: mqtt.publish
+                  data:
+                    topic: !input command_topic
+                    payload: >-
+                      {{ {
+                        'state': 'ON',
+                        'x': pixel_x | int,
+                        'y': pixel_y | int,
+                        'color': {'r': pattern_color[0] | int, 'g': pattern_color[1] | int, 'b': pattern_color[2] | int},
+                        'effect': effect | default('static')
+                      } | tojson }}
+    else:
+      - repeat:
+          count: "{{ ((duration_seconds | int / step_seconds | float) | round(0, 'ceil')) | int }}"
+          sequence:
+            - variables:
+                pattern_color: "{{ palette[(repeat.index - 1) % (palette | length)] }}"
+            - repeat:
+                for_each: "{{ range(81) | list }}"
+                sequence:
+                  - variables:
+                      pixel_x: "{{ repeat.item % 9 }}"
+                      pixel_y: "{{ repeat.item // 9 }}"
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ (layout == 'all')
+                             or (layout == 'row' and pixel_y | int == y | int)
+                             or (layout == 'column' and pixel_x | int == x | int)
+                             or (layout == 'button' and pixel_x | int == x | int and pixel_y | int == y | int) }}
+                    then:
+                      - action: mqtt.publish
+                        data:
+                          topic: !input command_topic
+                          payload: >-
+                            {{ {
+                              'state': 'ON',
+                              'x': pixel_x | int,
+                              'y': pixel_y | int,
+                              'color': {'r': pattern_color[0] | int, 'g': pattern_color[1] | int, 'b': pattern_color[2] | int},
+                              'effect': 'static'
+                            } | tojson }}
+            - delay:
+                seconds: "{{ step_seconds | float }}"

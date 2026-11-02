@@ -1,0 +1,6 @@
+launchpad_notification_blink:
+  alias: "Launchpad: Notification blink"
+  use_blueprint:
+    path: launchpad/notification_blink.yaml
+    input:
+      command_topic: device/launchpad/light/set

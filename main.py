@@ -16,7 +16,7 @@ BROKER = os.environ.get("BROKER")
 PORT = os.environ.get("PORT", "1883")
 USERNAME = os.environ.get("USERNAME")
 PASSWORD = os.environ.get("PASSWORD")
-DEVICE_ID = os.environ.get("DEVICE_ID", "launchpad_mk2")
+DEVICE_ID = os.environ.get("DEVICE_ID", "launchpad")
 DEVICE_NAME = os.environ.get("DEVICE_NAME", "Launchpad Matrix Controller")
 
 
@@ -59,6 +59,9 @@ SPECIAL_BUTTONS = {
     (8, 1): "volume", (8, 2): "pan", (8, 3): "send_a", (8, 4): "send_b",
     (8, 5): "stop", (8, 6): "mute", (8, 7): "solo", (8, 8): "record_arm"
 }
+SPECIAL_BUTTON_COORDINATES = {
+    label: coordinates for coordinates, label in SPECIAL_BUTTONS.items()
+}
 
 
 class LaunchpadController:
@@ -70,6 +73,9 @@ class LaunchpadController:
         self.lp.Reset()
         self._red_blink_on = False
         self._last_red_blink = 0.0
+        self._lock_indicator_button = None
+        self._lock_indicator_started = 0.0
+        self._lock_indicator_on = None
 
     def scale_color(self, r: int, g: int, b: int, brightness: int) -> tuple[int, int, int]:
         """Scales raw RGB values down based on Home Assistant's brightness scale (0-255)."""
@@ -81,6 +87,8 @@ class LaunchpadController:
         # Apply mathematical brightness scaling before calculating the target MIDI code
         r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
+        if (x, y) == self._lock_indicator_button:
+            self._lock_indicator_on = None
         
         if mode == "flash":
             self.lp.LedCtrlFlashXYByCode(x, y, colorcode)
@@ -90,6 +98,7 @@ class LaunchpadController:
             self.lp.LedCtrlXYByCode(x, y, colorcode)
 
     def display_text(self, text: str, r: int, g: int, b: int, brightness: int, direction_str: str):
+        self._lock_indicator_on = None
         r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
         direction = -1 if direction_str.lower() == "right" else 1
@@ -102,11 +111,13 @@ class LaunchpadController:
             self.lp.LedCtrlString(text, colorcode, direction, 1)
 
     def set_all_leds(self, r: int, g: int, b: int, brightness: int):
+        self._lock_indicator_on = None
         r, g, b = self.scale_color(r, g, b, brightness)
         colorcode = get_closest_color(r, g, b)
         self.lp.LedAllOn(colorcode)
 
     def clear(self):
+        self._lock_indicator_on = None
         self.lp.Reset()
 
     def blink_all_leds_red(self, enabled: bool):
@@ -126,6 +137,44 @@ class LaunchpadController:
             self.set_all_leds(255, 0, 0, 255)
         else:
             self.clear()
+
+    def update_lock_button_indicator(self, button_label: str, unlocked: bool):
+        if not unlocked or button_label == "Disabled":
+            if self._lock_indicator_button is not None:
+                x, y = self._lock_indicator_button
+                self.lp.LedCtrlXYByCode(x, y, 0)
+                self._lock_indicator_button = None
+                self._lock_indicator_on = None
+            return
+
+        button_xy = SPECIAL_BUTTON_COORDINATES.get(button_label)
+        if button_xy is None and button_label.startswith("grid_"):
+            try:
+                _, x, y = button_label.split("_")
+                button_xy = (int(x), int(y))
+            except ValueError:
+                button_xy = None
+
+        if button_xy is None:
+            return
+
+        current_time = time.monotonic()
+        if button_xy != self._lock_indicator_button:
+            if self._lock_indicator_button is not None:
+                previous_x, previous_y = self._lock_indicator_button
+                self.lp.LedCtrlXYByCode(previous_x, previous_y, 0)
+            self._lock_indicator_button = button_xy
+            self._lock_indicator_started = current_time
+            self._lock_indicator_on = None
+
+        should_be_on = int(current_time - self._lock_indicator_started) % 2 == 0
+        if should_be_on == self._lock_indicator_on:
+            return
+
+        x, y = button_xy
+        colorcode = get_closest_color(255, 0, 0) if should_be_on else 0
+        self.lp.LedCtrlXYByCode(x, y, colorcode)
+        self._lock_indicator_on = should_be_on
 
     def get_input(self) -> tuple[int, int, int] | None:
         state = self.lp.ButtonStateXY()
@@ -293,6 +342,10 @@ if __name__ == "__main__":
             button_events.check_timers()
             mqtt_handler.lock_manager.check_auto_lock()
             mqtt_handler.update_connection_indicator()
+            c.update_lock_button_indicator(
+                mqtt_handler.lock_manager.lock_button,
+                not mqtt_handler.lock_manager.locked
+            )
             sleep(0.01)  # 10ms loop speed ensures tight timing accuracy
             
     except KeyboardInterrupt:

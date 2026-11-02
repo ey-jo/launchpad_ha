@@ -1,0 +1,6 @@
+launchpad_display_pattern:
+  alias: "Launchpad: Color pattern"
+  use_blueprint:
+    path: launchpad/display_pattern.yaml
+    input:
+      command_topic: device/launchpad/light/set
