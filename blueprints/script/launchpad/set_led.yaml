@@ -1,0 +1,84 @@
+blueprint:
+  name: Launchpad - Set LED
+  description: Set one Launchpad LED to a color and effect.
+  domain: script
+  input:
+    command_topic:
+      name: MQTT command topic
+      description: Change "launchpad" if your DEVICE_ID is different.
+      default: device/launchpad/light/set
+      selector:
+        text:
+
+fields:
+  x:
+    name: X coordinate
+    required: true
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  y:
+    name: Y coordinate
+    required: true
+    selector:
+      number:
+        min: 0
+        max: 8
+        step: 1
+        mode: box
+  r:
+    name: Red
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  g:
+    name: Green
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  b:
+    name: Blue
+    default: 255
+    selector:
+      number:
+        min: 0
+        max: 255
+        step: 1
+        mode: slider
+  effect:
+    name: Effect
+    default: static
+    selector:
+      select:
+        options:
+          - static
+          - flash
+          - pulse
+
+sequence:
+  - action: mqtt.publish
+    data:
+      topic: !input command_topic
+      payload: >-
+        {
+          "state": "ON",
+          "x": {{ x | int }},
+          "y": {{ y | int }},
+          "color": {
+            "r": {{ r | default(255) | int }},
+            "g": {{ g | default(255) | int }},
+            "b": {{ b | default(255) | int }}
+          },
+          "effect": {{ effect | default('static') | tojson }}
+        }
