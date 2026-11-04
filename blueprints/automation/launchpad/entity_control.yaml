@@ -68,6 +68,9 @@ blueprint:
         text:
     event_type:
       name: Press type
+      description: >
+        For light row/column control, single-clicks select brightness and
+        double-clicking the lowest-value cell turns the light off.
       default: single_click
       selector:
         select:
@@ -220,12 +223,17 @@ action:
                 {% set x = -1 %}
                 {% set y = -1 %}
               {% endif %}
-              {{ trigger.payload_json.event_type == selected_event
-                 and ((selected_layout == 'row' and name.startswith('grid_')
-                       and y == (selected_axis | int) + 1 and 0 <= x <= 7)
-                   or (selected_layout == 'column' and name.startswith('grid_')
-                       and x == selected_axis and 1 <= y <= 8)
-                   or (selected_layout == 'button' and name == selected_button)) }}
+              {% set light_axis = entity_domain == 'light' and selected_layout in ['row', 'column'] %}
+              {% set axis_cell = name.startswith('grid_')
+                 and ((selected_layout == 'row' and y == (selected_axis | int) + 1 and 0 <= x <= 7)
+                   or (selected_layout == 'column' and x == selected_axis and 1 <= y <= 8)) %}
+              {% set lowest_cell = (selected_layout == 'row' and x == 0)
+                 or (selected_layout == 'column' and y == 8) %}
+              {{ (light_axis and axis_cell and
+                   (trigger.payload_json.event_type == 'single_click'
+                     or (trigger.payload_json.event_type == 'double_click' and lowest_cell)))
+                 or (not light_axis and trigger.payload_json.event_type == selected_event
+                   and (axis_cell or (selected_layout == 'button' and name == selected_button))) }}
         sequence:
           - variables:
               event_name: "{{ trigger.payload_json.button }}"
@@ -249,11 +257,20 @@ action:
               analog_value: >
                 {% if selected_layout == 'button' %}
                   {{ (button_value | int) }}
+                {% elif entity_domain == 'light' and selected_layout == 'row' %}
+                  {{ (((event_x | int) + 1) * 100 / 8) | round(1) }}
+                {% elif entity_domain == 'light' and selected_layout == 'column' %}
+                  {{ (((9 - (event_y | int)) * 100) / 8) | round(1) }}
                 {% elif selected_layout == 'row' %}
                   {{ (event_x | int * 100 / 7) | round(0) | int }}
                 {% else %}
                   {{ (100 - ((event_y | int - 1) * 100 / 7)) | round(0) | int }}
                 {% endif %}
+              light_off_press: >
+                {{ entity_domain == 'light' and selected_layout in ['row', 'column']
+                   and trigger.payload_json.event_type == 'double_click'
+                   and ((selected_layout == 'row' and event_x | int == 0)
+                     or (selected_layout == 'column' and event_y | int == 8)) }}
           - choose:
               - conditions:
                   - condition: template
@@ -279,7 +296,9 @@ action:
                 sequence:
                   - if:
                       - condition: template
-                        value_template: "{{ analog_value | int == 0 }}"
+                        value_template: >
+                          {{ light_off_press
+                             or (selected_layout == 'button' and analog_value | float == 0) }}
                     then:
                       - action: light.turn_off
                         target:
@@ -289,7 +308,7 @@ action:
                         target:
                           entity_id: !input entity
                         data:
-                          brightness_pct: "{{ analog_value | int }}"
+                          brightness_pct: "{{ analog_value | float }}"
                           rgb_color: !input on_color
 
       - conditions:
