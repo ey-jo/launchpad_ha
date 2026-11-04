@@ -27,6 +27,20 @@ blueprint:
             - domain: light
             - domain: select
             - domain: switch
+    only_when_unlocked:
+      name: Only run when the Launchpad is unlocked
+      description: When enabled, the automation runs only while the selected lock entity is unlocked.
+      default: false
+      selector:
+        boolean:
+    lock_entity:
+      name: Launchpad lock entity
+      description: Button Lock entity used when the unlocked-only option is enabled.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: lock
     layout:
       name: Control layout
       description: Row, column, or one button. Button and switch entities use the button mapping below.
@@ -43,7 +57,7 @@ blueprint:
       selector:
         number:
           min: 0
-          max: 8
+          max: 7
           step: 1
           mode: box
     control_button:
@@ -149,6 +163,8 @@ blueprint:
 
 variables:
   target_entity: !input entity
+  only_when_unlocked: !input only_when_unlocked
+  selected_lock_entity: !input lock_entity
   selected_command_topic: !input command_topic
   entity_domain: "{{ target_entity.split('.')[0] }}"
   selected_layout: !input layout
@@ -173,6 +189,11 @@ trigger:
   - platform: state
     entity_id: !input entity
     id: entity_state
+
+condition:
+  - condition: template
+    value_template: >
+      {{ not only_when_unlocked or is_state(selected_lock_entity, 'unlocked') }}
 
 action:
   - choose:
@@ -200,8 +221,10 @@ action:
                 {% set y = -1 %}
               {% endif %}
               {{ trigger.payload_json.event_type == selected_event
-                 and ((selected_layout == 'row' and y == selected_axis)
-                   or (selected_layout == 'column' and x == selected_axis)
+                 and ((selected_layout == 'row' and name.startswith('grid_')
+                       and y == (selected_axis | int) + 1 and 0 <= x <= 7)
+                   or (selected_layout == 'column' and name.startswith('grid_')
+                       and x == selected_axis and 1 <= y <= 8)
                    or (selected_layout == 'button' and name == selected_button)) }}
         sequence:
           - variables:
@@ -227,9 +250,9 @@ action:
                 {% if selected_layout == 'button' %}
                   {{ (button_value | int) }}
                 {% elif selected_layout == 'row' %}
-                  {{ (100 - (event_x | int * 100 / 8)) | round(0) | int }}
+                  {{ (event_x | int * 100 / 7) | round(0) | int }}
                 {% else %}
-                  {{ (100 - (event_y | int * 100 / 8)) | round(0) | int }}
+                  {{ (100 - ((event_y | int - 1) * 100 / 7)) | round(0) | int }}
                 {% endif %}
           - choose:
               - conditions:
@@ -397,25 +420,26 @@ action:
                     pixel_x: "{{ repeat.item % 9 }}"
                     pixel_y: "{{ repeat.item // 9 }}"
                     axis_position: >
-                      {% if selected_layout == 'row' %}{{ pixel_x | int }}
-                      {% else %}{{ pixel_y | int }}{% endif %}
+                      {% if selected_layout == 'row' %}
+                        {{ pixel_x | int }}
+                      {% else %}
+                        {{ (pixel_y | int) - 1 }}
+                      {% endif %}
                     pixel_selected: >
-                      {{ (selected_layout == 'row' and pixel_y | int == selected_axis | int)
-                         or (selected_layout == 'column' and pixel_x | int == selected_axis | int)
+                      {{ (selected_layout == 'row'
+                           and pixel_y | int == (selected_axis | int) + 1
+                           and 0 <= pixel_x | int <= 7)
+                         or (selected_layout == 'column' and pixel_x | int == selected_axis | int
+                           and 1 <= pixel_y | int <= 8)
                          or (selected_layout == 'button'
                            and pixel_x | int == single_coords[0] | int
                            and pixel_y | int == single_coords[1] | int) }}
-                    pixel_active: >
-                      {% if selected_layout == 'button' %}
-                        {{ state_value | int > 0 }}
-                      {% else %}
-                        {{ (axis_position | int) < ((state_value | int * 9 / 100) | round(0) | int) }}
-                      {% endif %}
                     pixel_color: >
-                      {% if not pixel_active %}
+                      {% set active_count = (state_value | int * 8 / 100) | round(0) | int %}
+                      {% if selected_layout != 'button' and axis_position | int >= active_count %}
                         {{ inactive_color }}
                       {% elif gradient_colors | length > 0 and selected_layout != 'button' %}
-                        {% set color_index = (axis_position | int * (gradient_colors | length - 1) / 8) | round(0) | int %}
+                        {% set color_index = (axis_position | int * (gradient_colors | length - 1) / 7) | round(0) | int %}
                         {{ gradient_colors[color_index] }}
                       {% else %}
                         {{ active_color }}
