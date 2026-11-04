@@ -73,10 +73,13 @@ Enable **Only run when the Launchpad is unlocked** and select its **Button
 Lock** entity to prevent this automation from running while the device is
 locked. The option is disabled by default.
 
-Cover position and fan percentage use the selected cell's value. Lights use
-that value for brightness and turn off at 0%. The automation mirrors an
-entity's current value on the selected row/column: at 60%, about 60% of the
-eight LEDs are active. Choose an active and inactive RGB color; black
+Cover position and fan percentage use the selected cell's value. For lights in
+row or column mode, single-clicks select eight brightness levels from 1/8 to
+8/8 (12.5% to 100%); double-click the lowest-value cell (leftmost in a row,
+bottommost in a column) to turn the light off. In button mode, lights use the
+configured single-button value, with 0% turning them off. The automation
+mirrors an entity's current value on the selected row/column: at 60%, about
+60% of the eight LEDs are active. Choose an active and inactive RGB color; black
 (`[0, 0, 0]`) leaves inactive LEDs unlit. An optional JSON gradient can assign
 different active colors along the bar, for example
 `[[0,0,255],[0,255,0],[255,0,0]]`.
