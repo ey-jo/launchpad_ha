@@ -73,9 +73,9 @@ press type:
 - In button mode, the chosen physical button sets the configured single-button
   value.
 
-Enable **Only run when the Launchpad is unlocked** and select its **Button
-Lock** entity to prevent this automation from running while the device is
-locked. The option is disabled by default.
+Enable **Only run when the lock is unlocked** and select any Home Assistant
+lock entity to prevent this automation from running while that lock is locked.
+The option is disabled by default.
 
 Cover position and fan percentage use the selected cell's value. For lights in
 row or column mode, single-clicks select eight brightness levels from 1/8 to

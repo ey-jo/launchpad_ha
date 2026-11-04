@@ -28,14 +28,14 @@ blueprint:
             - domain: select
             - domain: switch
     only_when_unlocked:
-      name: Only run when the Launchpad is unlocked
-      description: When enabled, the automation runs only while the selected lock entity is unlocked.
+      name: Only run when the lock is unlocked
+      description: When enabled, the automation runs only while the selected Home Assistant lock entity is unlocked.
       default: false
       selector:
         boolean:
     lock_entity:
-      name: Launchpad lock entity
-      description: Button Lock entity used when the unlocked-only option is enabled.
+      name: Lock entity
+      description: Any Home Assistant lock entity used to restrict this automation when locked.
       default: ""
       selector:
         entity:
