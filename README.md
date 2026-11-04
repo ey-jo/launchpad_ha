@@ -24,6 +24,10 @@ Start the service
 sudo systemctl start launchpad.service
 ```
 
+The service waits for the network to come online and retries after startup
+failures. If it still cannot reach the broker, verify the broker address and
+network route from the machine running this service.
+
 ## Updating
 ```bash
 git pull

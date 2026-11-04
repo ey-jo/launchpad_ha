@@ -296,6 +296,7 @@ if __name__ == "__main__":
         print("\nHalting script safely...")
     except Exception as e:
         print(f"Runtime execution error: {e}")
+        raise
     finally:
         mqtt_handler.stop()
         c.clear()
