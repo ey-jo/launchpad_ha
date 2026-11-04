@@ -60,17 +60,23 @@ provides the domain-appropriate mapping fields.
 For covers, fans, and lights, choose **row**, **column**, or **button** and a
 press type:
 
-- In row mode, choose a row number (`y`). Pressing its nine cells sets the
-  entity value from **100% at the first cell to 0% at the last**.
-- In column mode, choose a column number (`x`); values run from **100% at the
-  top to 0% at the bottom**.
+- In row mode, choose a row index (`0..7`), corresponding to grid `y=1..8`.
+  Grid positions `x=0..7` set the entity value from **0% at the left to 100%
+  at the right**. Special buttons are ignored.
+- In column mode, choose a column index (`0..7`, corresponding to `x`). Grid
+  positions `y=1..8` set the entity value from **100% at the top to 0% at the
+  bottom**. Special buttons are ignored.
 - In button mode, the chosen physical button sets the configured single-button
   value.
+
+Enable **Only run when the Launchpad is unlocked** and select its **Button
+Lock** entity to prevent this automation from running while the device is
+locked. The option is disabled by default.
 
 Cover position and fan percentage use the selected cell's value. Lights use
 that value for brightness and turn off at 0%. The automation mirrors an
 entity's current value on the selected row/column: at 60%, about 60% of the
-nine LEDs are active. Choose an active and inactive RGB color; black
+eight LEDs are active. Choose an active and inactive RGB color; black
 (`[0, 0, 0]`) leaves inactive LEDs unlit. An optional JSON gradient can assign
 different active colors along the bar, for example
 `[[0,0,255],[0,255,0],[255,0,0]]`.
