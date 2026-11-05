@@ -106,6 +106,13 @@ Enable **Only run when the lock is unlocked** and select any Home Assistant
 lock entity to prevent this automation from running while that lock is locked.
 The option is disabled by default.
 
+The automation redraws its configured LEDs when the Launchpad connects or
+reconnects, when the controlled entity changes, and when the selected
+**Lock entity** unlocks. LEDs are cleared when that lock becomes locked, and
+entity feedback is only shown while unlocked. Select a lock entity for LED
+feedback. If you use a custom availability topic, set it in the blueprint to
+match the controller's topic.
+
 In button mode, lights use the configured single-button value, with 0% turning
 them off. The automation mirrors an entity's current value on the selected
 row/column: at 60%, about 60% of the eight LEDs are active. Choose an active
