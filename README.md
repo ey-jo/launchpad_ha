@@ -6,6 +6,10 @@ This project makes it possible to use a Novation Launchpad with Home Assistant
 over MQTT. It runs in Python using
 [launchpad.py](https://github.com/FMMT666/launchpad.py/tree/master).
 
+`main.py` is the entry point; supporting Python modules live in `modules/`.
+MQTT handling, Launchpad control, and settings file I/O each have a dedicated
+module there.
+
 ## Prerequisites
 
 - Running Home Assistant instance

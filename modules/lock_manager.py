@@ -1,13 +1,10 @@
 import json
-import os
 import time
-from pathlib import Path
+
+from .file_writer import SETTINGS_FILE, load_settings, write_settings
 
 MAX_AUTO_LOCK_SECONDS = 86400
 MAX_LIGHT_BRIGHTNESS = 255
-SETTINGS_FILE = Path(__file__).with_name("device_settings.json")
-
-
 def parse_auto_lock_seconds(value: object) -> int:
     try:
         if isinstance(value, bool) or not isinstance(value, (int, str)):
@@ -198,11 +195,8 @@ class LockManager:
         self.client.publish(self.event_state_topic, json.dumps(payload))
 
     def load_settings(self):
-        if SETTINGS_FILE.exists():
-            with SETTINGS_FILE.open(encoding="utf-8") as settings_file:
-                settings = json.load(settings_file)
-            if not isinstance(settings, dict):
-                raise ValueError(f"{SETTINGS_FILE} must contain a JSON object.")
+        settings = load_settings()
+        if settings is not None:
             self.lock_button = settings.get("lock_button", self.lock_button)
             self.auto_lock_seconds = parse_auto_lock_seconds(
                 settings.get("auto_lock_seconds", self.auto_lock_seconds)
@@ -237,16 +231,7 @@ class LockManager:
             "auto_lock_seconds": self.auto_lock_seconds,
             "light_brightness": self.light_brightness
         }
-        temporary_file = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.tmp")
-        try:
-            with temporary_file.open("w", encoding="utf-8") as settings_file:
-                json.dump(settings, settings_file, indent=2)
-                settings_file.write("\n")
-                settings_file.flush()
-                os.fsync(settings_file.fileno())
-            os.replace(temporary_file, SETTINGS_FILE)
-        finally:
-            temporary_file.unlink(missing_ok=True)
+        write_settings(settings)
 
     def set_locked(self, locked: bool):
         self.locked = locked
