@@ -109,7 +109,7 @@ class LaunchpadController:
     def clear(self):
         self.lp.Reset()
 
-    def blink_all_leds_red(self, enabled: bool):
+    def blink_all_leds_red(self, enabled: bool, brightness: int = 255):
         if not enabled:
             if self._red_blink_on:
                 self.clear()
@@ -123,7 +123,7 @@ class LaunchpadController:
         self._last_red_blink = current_time
         self._red_blink_on = not self._red_blink_on
         if self._red_blink_on:
-            self.set_all_leds(255, 0, 0, 255)
+            self.set_all_leds(255, 0, 0, brightness)
         else:
             self.clear()
 
@@ -157,7 +157,7 @@ class MQTTHandler:
         )
         
         # Track state attributes internally to acknowledge states accurately back to HA
-        self.current_brightness = 255 
+        self.current_brightness = self.lock_manager.light_brightness
         self.current_r = 255
         self.current_g = 255
         self.current_b = 255
@@ -185,7 +185,11 @@ class MQTTHandler:
         self.client.subscribe(self.lock_manager.timer_command_topic)
         self.publish_discovery()
         self.publish_availability("online")
-        self.client.publish(LIGHT_STATE_TOPIC, json.dumps({"state": "OFF"}), retain=True)
+        self.client.publish(
+            LIGHT_STATE_TOPIC,
+            json.dumps({"state": "OFF", "brightness": self.current_brightness}),
+            retain=True
+        )
         self.lock_manager.publish_state()
 
     def publish_availability(self, availability: str):
@@ -239,7 +243,9 @@ class MQTTHandler:
 
             # 1. Handle incoming brightness state payload (HA handles this in a 0-255 range)
             if "brightness" in payload:
-                self.current_brightness = int(payload["brightness"])
+                self.current_brightness = self.lock_manager.set_light_brightness(
+                    payload["brightness"]
+                )
 
             # 2. Extract or update tracking color properties
             if "color" in payload:
@@ -252,7 +258,11 @@ class MQTTHandler:
 
             if state == "OFF" or mode == "clear":
                 self.lp_ctrl.clear()
-                self.client.publish(LIGHT_STATE_TOPIC, json.dumps({"state": "OFF"}), retain=True)
+                self.client.publish(
+                    LIGHT_STATE_TOPIC,
+                    json.dumps({"state": "OFF", "brightness": self.current_brightness}),
+                    retain=True
+                )
                 return
 
             # 3. Route actions using the updated brightness scaling values
@@ -266,7 +276,9 @@ class MQTTHandler:
                 self.lp_ctrl.set_all_leds(self.current_r, self.current_g, self.current_b, self.current_brightness)
 
             # Mirror current known states to keep HA in sync
-            self.client.publish(LIGHT_STATE_TOPIC, json.dumps(payload), retain=True)
+            state_payload = payload.copy()
+            state_payload["brightness"] = self.current_brightness
+            self.client.publish(LIGHT_STATE_TOPIC, json.dumps(state_payload), retain=True)
 
         except Exception as e:
             print(f"Error handling MQTT message on {msg.topic}: {e}")
@@ -275,7 +287,9 @@ class MQTTHandler:
         self.lock_manager.send_button_event(button_label, event_type)
 
     def update_connection_indicator(self):
-        self.lp_ctrl.blink_all_leds_red(not self.connected.is_set())
+        self.lp_ctrl.blink_all_leds_red(
+            not self.connected.is_set(), self.current_brightness
+        )
 
 
 if __name__ == "__main__":

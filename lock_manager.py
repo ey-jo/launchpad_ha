@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 MAX_AUTO_LOCK_SECONDS = 86400
+MAX_LIGHT_BRIGHTNESS = 255
 SETTINGS_FILE = Path(__file__).with_name("device_settings.json")
 
 
@@ -20,6 +21,20 @@ def parse_auto_lock_seconds(value: object) -> int:
         print(f"Invalid auto-lock timer {value!r}; falling back to 0 seconds.")
         return 0
     return seconds
+
+
+def parse_light_brightness(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError("Light brightness must be an integer between 0 and 255.")
+
+    try:
+        brightness = int(value)
+    except ValueError as exc:
+        raise ValueError("Light brightness must be an integer between 0 and 255.") from exc
+
+    if not 0 <= brightness <= MAX_LIGHT_BRIGHTNESS:
+        raise ValueError("Light brightness must be an integer between 0 and 255.")
+    return brightness
 
 
 class LockManager:
@@ -49,6 +64,7 @@ class LockManager:
 
         self.lock_button = initial_button
         self.auto_lock_seconds = initial_auto_lock_seconds
+        self.light_brightness = MAX_LIGHT_BRIGHTNESS
         self.locked = True
         self.auto_lock_deadline = None
         self.load_settings()
@@ -191,14 +207,35 @@ class LockManager:
             self.auto_lock_seconds = parse_auto_lock_seconds(
                 settings.get("auto_lock_seconds", self.auto_lock_seconds)
             )
+            try:
+                self.light_brightness = parse_light_brightness(
+                    settings.get("light_brightness", self.light_brightness)
+                )
+            except ValueError:
+                print(
+                    f"Invalid light brightness in {SETTINGS_FILE}; "
+                    f"using {self.light_brightness}."
+                )
 
         if self.lock_button not in self.button_options:
             raise ValueError(f"LOCK_BUTTON must be one of {self.button_options}.")
 
+    def set_light_brightness(self, value: object) -> int:
+        brightness = parse_light_brightness(value)
+        previous_brightness = self.light_brightness
+        self.light_brightness = brightness
+        try:
+            self.save_settings()
+        except OSError:
+            self.light_brightness = previous_brightness
+            raise
+        return brightness
+
     def save_settings(self):
         settings = {
             "lock_button": self.lock_button,
-            "auto_lock_seconds": self.auto_lock_seconds
+            "auto_lock_seconds": self.auto_lock_seconds,
+            "light_brightness": self.light_brightness
         }
         temporary_file = SETTINGS_FILE.with_name(f".{SETTINGS_FILE.name}.tmp")
         try:
