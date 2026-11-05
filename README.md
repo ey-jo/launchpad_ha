@@ -61,31 +61,30 @@ to create an automation for a **button**, **cover**, **fan**, **light**,
 **select**, or **switch** entity. The blueprint selects the entity domain and
 provides the domain-appropriate mapping fields.
 
-For covers, fans, and lights, choose **row**, **column**, or **button** and a
-press type:
+For covers, fans, and lights, choose **row**, **column**, or **button**:
 
 - In row mode, choose a row index (`0..7`), corresponding to grid `y=1..8`.
-  Grid positions `x=0..7` set the entity value from **0% at the left to 100%
-  at the right**. Special buttons are ignored.
+  Single-clicking grid positions `x=0..7` sets the entity to **1/9 through
+  8/9** (about 11.1% to 88.9%). Double-click the leftmost cell to turn the
+  entity off; double-click the rightmost cell to set it to 100%. Special
+  buttons are ignored.
 - In column mode, choose a column index (`0..7`, corresponding to `x`). Grid
-  positions `y=1..8` set the entity value from **100% at the top to 0% at the
-  bottom**. Special buttons are ignored.
+  positions `y=1..8` set the entity to **8/9 at the top through 1/9 at the
+  bottom**. Double-click the bottom cell to turn the entity off; double-click
+  the top cell to set it to 100%. Special buttons are ignored.
 - In button mode, the chosen physical button sets the configured single-button
-  value.
+  value using the selected press type.
 
 Enable **Only run when the lock is unlocked** and select any Home Assistant
 lock entity to prevent this automation from running while that lock is locked.
 The option is disabled by default.
 
-Cover position and fan percentage use the selected cell's value. For lights in
-row or column mode, single-clicks select eight brightness levels from 1/8 to
-8/8 (12.5% to 100%); double-click the lowest-value cell (leftmost in a row,
-bottommost in a column) to turn the light off. In button mode, lights use the
-configured single-button value, with 0% turning them off. The automation
-mirrors an entity's current value on the selected row/column: at 60%, about
-60% of the eight LEDs are active. Choose an active and inactive RGB color; black
-(`[0, 0, 0]`) leaves inactive LEDs unlit. An optional JSON gradient can assign
-different active colors along the bar, for example
+In button mode, lights use the configured single-button value, with 0% turning
+them off. The automation mirrors an entity's current value on the selected
+row/column: at 60%, about 60% of the eight LEDs are active. Choose an active
+and inactive RGB color; black (`[0, 0, 0]`) leaves inactive LEDs unlit. An
+optional JSON gradient can assign different active colors along the bar, for
+example
 `[[0,0,255],[0,255,0],[255,0,0]]`.
 
 Button and switch entities use explicit button mappings (one per line). Button

@@ -69,8 +69,9 @@ blueprint:
     event_type:
       name: Press type
       description: >
-        For light row/column control, single-clicks select brightness and
-        double-clicking the lowest-value cell turns the light off.
+        Used in button layout. In row/column layout, single-clicks select a
+        level and double-clicking the lowest or highest cell turns the entity
+        off or sets it to 100%.
       default: single_click
       selector:
         select:
@@ -223,16 +224,20 @@ action:
                 {% set x = -1 %}
                 {% set y = -1 %}
               {% endif %}
-              {% set light_axis = entity_domain == 'light' and selected_layout in ['row', 'column'] %}
+              {% set analog_axis = entity_domain in ['cover', 'fan', 'light']
+                 and selected_layout in ['row', 'column'] %}
               {% set axis_cell = name.startswith('grid_')
                  and ((selected_layout == 'row' and y == (selected_axis | int) + 1 and 0 <= x <= 7)
                    or (selected_layout == 'column' and x == selected_axis and 1 <= y <= 8)) %}
               {% set lowest_cell = (selected_layout == 'row' and x == 0)
                  or (selected_layout == 'column' and y == 8) %}
-              {{ (light_axis and axis_cell and
+              {% set highest_cell = (selected_layout == 'row' and x == 7)
+                 or (selected_layout == 'column' and y == 1) %}
+              {{ (analog_axis and axis_cell and
                    (trigger.payload_json.event_type == 'single_click'
-                     or (trigger.payload_json.event_type == 'double_click' and lowest_cell)))
-                 or (not light_axis and trigger.payload_json.event_type == selected_event
+                     or (trigger.payload_json.event_type == 'double_click'
+                       and (lowest_cell or highest_cell))))
+                 or (not analog_axis and trigger.payload_json.event_type == selected_event
                    and (axis_cell or (selected_layout == 'button' and name == selected_button))) }}
         sequence:
           - variables:
@@ -257,21 +262,37 @@ action:
               analog_value: >
                 {% if selected_layout == 'button' %}
                   {{ (button_value | int) }}
-                {% elif entity_domain == 'light' and selected_layout == 'row' %}
-                  {{ (((event_x | int) + 1) * 100 / 8) | round(1) }}
-                {% elif entity_domain == 'light' and selected_layout == 'column' %}
-                  {{ (((9 - (event_y | int)) * 100) / 8) | round(1) }}
                 {% elif selected_layout == 'row' %}
-                  {{ (event_x | int * 100 / 7) | round(0) | int }}
+                  {{ (((event_x | int) + 1) * 100 / 9) | round(1) }}
                 {% else %}
-                  {{ (100 - ((event_y | int - 1) * 100 / 7)) | round(0) | int }}
+                  {{ ((9 - (event_y | int)) * 100 / 9) | round(1) }}
                 {% endif %}
-              light_off_press: >
-                {{ entity_domain == 'light' and selected_layout in ['row', 'column']
+              analog_off_press: >
+                {{ selected_layout in ['row', 'column']
                    and trigger.payload_json.event_type == 'double_click'
                    and ((selected_layout == 'row' and event_x | int == 0)
                      or (selected_layout == 'column' and event_y | int == 8)) }}
+              applied_value: >
+                {% if selected_layout in ['row', 'column']
+                      and trigger.payload_json.event_type == 'double_click'
+                      and ((selected_layout == 'row' and event_x | int == 7)
+                        or (selected_layout == 'column' and event_y | int == 1)) %}
+                  100
+                {% elif selected_layout == 'button' %}
+                  {{ button_value | int }}
+                {% elif selected_layout == 'row' %}
+                  {{ (((event_x | int) + 1) * 100 / 9) | round(1) }}
+                {% else %}
+                  {{ ((9 - (event_y | int)) * 100 / 9) | round(1) }}
+                {% endif %}
           - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ entity_domain == 'cover' and analog_off_press }}"
+                sequence:
+                  - action: cover.close_cover
+                    target:
+                      entity_id: !input entity
               - conditions:
                   - condition: template
                     value_template: "{{ entity_domain == 'cover' }}"
@@ -280,7 +301,14 @@ action:
                     target:
                       entity_id: !input entity
                     data:
-                      position: "{{ analog_value | int }}"
+                      position: "{{ applied_value | int }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ entity_domain == 'fan' and analog_off_press }}"
+                sequence:
+                  - action: fan.turn_off
+                    target:
+                      entity_id: !input entity
               - conditions:
                   - condition: template
                     value_template: "{{ entity_domain == 'fan' }}"
@@ -289,7 +317,7 @@ action:
                     target:
                       entity_id: !input entity
                     data:
-                      percentage: "{{ analog_value | int }}"
+                      percentage: "{{ applied_value | int }}"
               - conditions:
                   - condition: template
                     value_template: "{{ entity_domain == 'light' }}"
@@ -297,7 +325,7 @@ action:
                   - if:
                       - condition: template
                         value_template: >
-                          {{ light_off_press
+                          {{ analog_off_press
                              or (selected_layout == 'button' and analog_value | float == 0) }}
                     then:
                       - action: light.turn_off
@@ -308,7 +336,7 @@ action:
                         target:
                           entity_id: !input entity
                         data:
-                          brightness_pct: "{{ analog_value | float }}"
+                          brightness_pct: "{{ applied_value | float }}"
                           rgb_color: !input on_color
 
       - conditions:
