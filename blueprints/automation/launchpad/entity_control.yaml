@@ -41,6 +41,26 @@ blueprint:
         entity:
           filter:
             - domain: lock
+    only_when_profile_active:
+      name: Only run when a profile is active
+      description: Enable the profile condition below to restrict this automation to a selected active profile.
+      default: false
+      selector:
+        boolean:
+    profile_select_entity:
+      name: Active profile select entity
+      description: MQTT select entity provided by the Launchpad controller.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    required_profile:
+      name: Required profile name
+      description: Exact profile name that must be selected for this automation to run.
+      default: ""
+      selector:
+        text:
     layout:
       name: Control layout
       description: Row, column, or one button. Button and switch entities use the button mapping below.
@@ -169,6 +189,9 @@ variables:
   target_entity: !input entity
   only_when_unlocked: !input only_when_unlocked
   selected_lock_entity: !input lock_entity
+  only_when_profile_active: !input only_when_profile_active
+  selected_profile_entity: !input profile_select_entity
+  required_profile: !input required_profile
   selected_command_topic: !input command_topic
   entity_domain: "{{ target_entity.split('.')[0] }}"
   selected_layout: !input layout
@@ -198,6 +221,12 @@ condition:
   - condition: template
     value_template: >
       {{ not only_when_unlocked or is_state(selected_lock_entity, 'unlocked') }}
+  - condition: template
+    value_template: >
+      {{ not only_when_profile_active
+         or (selected_profile_entity != ''
+           and required_profile | trim != ''
+           and is_state(selected_profile_entity, required_profile | trim)) }}
 
 action:
   - choose:

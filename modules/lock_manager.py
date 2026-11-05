@@ -1,10 +1,12 @@
 import json
 import time
 
-from .file_writer import SETTINGS_FILE, load_settings, write_settings
+from .file_writer import SETTINGS_FILE, load_settings, update_settings
 
 MAX_AUTO_LOCK_SECONDS = 86400
 MAX_LIGHT_BRIGHTNESS = 255
+
+
 def parse_auto_lock_seconds(value: object) -> int:
     try:
         if isinstance(value, bool) or not isinstance(value, (int, str)):
@@ -226,12 +228,11 @@ class LockManager:
         return brightness
 
     def save_settings(self):
-        settings = {
+        update_settings({
             "lock_button": self.lock_button,
             "auto_lock_seconds": self.auto_lock_seconds,
             "light_brightness": self.light_brightness
-        }
-        write_settings(settings)
+        })
 
     def set_locked(self, locked: bool):
         self.locked = locked

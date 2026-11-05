@@ -6,6 +6,7 @@ import paho.mqtt.client as mqtt
 
 from .launchpad import LaunchpadController
 from .lock_manager import LockManager, parse_auto_lock_seconds
+from .profile_manager import ProfileManager
 
 
 def validate_mqtt_settings(broker: str | None, port: str) -> tuple[str, int]:
@@ -69,6 +70,13 @@ class MQTTHandler:
             os.environ.get("LOCK_BUTTON", "up"),
             parse_auto_lock_seconds(os.environ.get("AUTO_LOCK_SECONDS", "0"))
         )
+        self.profile_manager = ProfileManager(
+            self.client,
+            device_id,
+            self.device_info,
+            self.availability_topic,
+            special_buttons
+        )
 
         self.current_brightness = self.lock_manager.light_brightness
         self.current_r = 255
@@ -96,6 +104,8 @@ class MQTTHandler:
         self.client.subscribe(self.lock_manager.command_topic)
         self.client.subscribe(self.lock_manager.button_command_topic)
         self.client.subscribe(self.lock_manager.timer_command_topic)
+        self.client.subscribe(self.profile_manager.add_topic)
+        self.client.subscribe(self.profile_manager.command_topic)
         self.publish_discovery()
         self.publish_availability("online")
         self.client.publish(
@@ -104,6 +114,8 @@ class MQTTHandler:
             retain=True
         )
         self.lock_manager.publish_state()
+        self.profile_manager.publish_discovery()
+        self.profile_manager.publish_state()
 
     def publish_availability(self, availability: str):
         self.client.publish(self.availability_topic, availability, retain=True)
@@ -147,6 +159,8 @@ class MQTTHandler:
 
     def on_message(self, _client, _userdata, msg):
         try:
+            if self.profile_manager.on_message(msg):
+                return
             if self.lock_manager.on_message(msg):
                 return
 
@@ -200,6 +214,9 @@ class MQTTHandler:
             print(f"Error handling MQTT message on {msg.topic}: {e}")
 
     def send_button_event(self, button_label: str, event_type: str):
+        if (button_label != self.lock_manager.lock_button
+                and self.profile_manager.activate_for_button(button_label, event_type)):
+            return
         self.lock_manager.send_button_event(button_label, event_type)
 
     def update_connection_indicator(self):

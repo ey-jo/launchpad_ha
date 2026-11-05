@@ -58,6 +58,29 @@ The event topic defaults to `device/launchpad/event/state` and the display
 command topic defaults to `device/launchpad/light/set`. If `.env` uses a
 different `DEVICE_ID`, replace `launchpad` in both topics with that ID.
 
+### Profiles
+
+Create a profile by adding an `mqtt.publish` action in Home Assistant. Publish
+a JSON payload with its name and Launchpad button to
+`device/launchpad/profile/add`:
+
+```yaml
+action: mqtt.publish
+data:
+  topic: device/launchpad/profile/add
+  payload: '{"name":"Work","button":"grid_1_1"}'
+```
+
+Replace `launchpad` with the configured `DEVICE_ID`. Each physical button can
+be assigned to one profile. A single-click on that button activates its
+profile. The MQTT **Active Profile** select entity lists profile names only;
+changing its selection also activates that profile. Profiles and the active
+selection are saved in `device_settings.json`.
+
+In the Launchpad entity control blueprint, enable **Only run when a profile is
+active**, select the **Active Profile** entity, and enter the exact **Required
+profile name**. The automation runs only while that profile is selected.
+
 ### Control entities from the Launchpad
 
 Use the [Launchpad entity control blueprint](blueprints/automation/launchpad/entity_control.yaml)

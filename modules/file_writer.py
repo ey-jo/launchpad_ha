@@ -2,8 +2,10 @@ import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from threading import RLock
 
 SETTINGS_FILE = Path(__file__).parent.parent / "device_settings.json"
+_SETTINGS_LOCK = RLock()
 
 
 def load_settings(path: Path = SETTINGS_FILE) -> dict[str, object] | None:
@@ -18,13 +20,21 @@ def load_settings(path: Path = SETTINGS_FILE) -> dict[str, object] | None:
 
 
 def write_settings(settings: Mapping[str, object], path: Path = SETTINGS_FILE) -> None:
-    temporary_file = path.with_name(f".{path.name}.tmp")
-    try:
-        with temporary_file.open("w", encoding="utf-8") as settings_file:
-            json.dump(settings, settings_file, indent=2)
-            settings_file.write("\n")
-            settings_file.flush()
-            os.fsync(settings_file.fileno())
-        os.replace(temporary_file, path)
-    finally:
-        temporary_file.unlink(missing_ok=True)
+    with _SETTINGS_LOCK:
+        temporary_file = path.with_name(f".{path.name}.tmp")
+        try:
+            with temporary_file.open("w", encoding="utf-8") as settings_file:
+                json.dump(settings, settings_file, indent=2)
+                settings_file.write("\n")
+                settings_file.flush()
+                os.fsync(settings_file.fileno())
+            os.replace(temporary_file, path)
+        finally:
+            temporary_file.unlink(missing_ok=True)
+
+
+def update_settings(updates: Mapping[str, object], path: Path = SETTINGS_FILE) -> None:
+    with _SETTINGS_LOCK:
+        settings = load_settings(path) or {}
+        settings.update(updates)
+        write_settings(settings, path)
