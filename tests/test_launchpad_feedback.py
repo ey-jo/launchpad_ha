@@ -2,6 +2,7 @@ import json
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -260,6 +261,21 @@ class LockIndicatorTests(unittest.TestCase):
             matrix_commands[-1]["color"],
             {"r": 0, "g": 0, "b": 0}
         )
+
+
+class BlueprintRefreshTests(unittest.TestCase):
+    def test_lock_entity_is_available_to_template_triggers(self):
+        blueprint_path = (
+            Path(__file__).resolve().parents[1]
+            / "blueprints/automation/launchpad/entity_control.yaml"
+        )
+        blueprint = blueprint_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "trigger_variables:\n  selected_lock_entity: !input lock_entity",
+            blueprint
+        )
+        self.assertIn("id: lock_unlocked", blueprint)
 
 
 if __name__ == "__main__":

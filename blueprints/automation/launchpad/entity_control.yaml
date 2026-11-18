@@ -223,6 +223,9 @@ variables:
   sequence_step: !input sequence_step_seconds
   sequence_cycles_count: !input sequence_cycles
 
+trigger_variables:
+  selected_lock_entity: !input lock_entity
+
 trigger:
   - platform: mqtt
     topic: !input event_topic
