@@ -47,6 +47,7 @@ class MQTTHandler:
         self.event_config_topic = f"homeassistant/event/{device_id}/matrix_click/config"
         self.light_state_topic = f"device/{device_id}/light/state"
         self.light_command_topic = f"device/{device_id}/light/set"
+        self.light_refresh_topic = f"device/{device_id}/light/refresh"
         self.event_state_topic = f"device/{device_id}/event/state"
         self.availability_topic = f"device/{device_id}/availability"
         self.device_info = {
@@ -167,38 +168,74 @@ class MQTTHandler:
             payload = json.loads(msg.payload.decode())
             if payload.get("lock_indicator"):
                 color = payload["color"]
-                self.lp_ctrl.set_led_xy(
-                    int(payload["x"]),
-                    int(payload["y"]),
+                color_code = {
+                    (255, 0, 0): 5,
+                    (0, 255, 0): 21,
+                    (0, 0, 0): 0
+                }[(
                     int(color["r"]),
                     int(color["g"]),
-                    int(color["b"]),
-                    self.current_brightness
+                    int(color["b"])
+                )]
+                self.lp_ctrl.set_led_xy_by_code(
+                    int(payload["x"]), int(payload["y"]), color_code
                 )
                 return
 
             print(f"Received Command: {payload}")
 
+            previous_brightness = self.current_brightness
             if "brightness" in payload:
                 self.current_brightness = self.lock_manager.set_light_brightness(
                     payload["brightness"]
                 )
+            brightness_changed = self.current_brightness != previous_brightness
 
+            color_changed = False
             if "color" in payload:
-                self.current_r = payload["color"].get("r", 255)
-                self.current_g = payload["color"].get("g", 255)
-                self.current_b = payload["color"].get("b", 255)
+                color = payload["color"]
+                new_color = (
+                    int(color.get("r", self.current_r)),
+                    int(color.get("g", self.current_g)),
+                    int(color.get("b", self.current_b))
+                )
+                color_changed = new_color != (
+                    self.current_r, self.current_g, self.current_b
+                )
+                self.current_r, self.current_g, self.current_b = new_color
 
             mode = payload.get("effect", "static")
             state = payload.get("state", "ON")
 
             if state == "OFF" or mode == "clear":
                 self.lp_ctrl.clear()
+                if self.lock_manager.locked:
+                    self.lock_manager.publish_lock_indicator()
                 self.client.publish(
                     self.light_state_topic,
                     json.dumps({"state": "OFF", "brightness": self.current_brightness}),
                     retain=True
                 )
+                if brightness_changed:
+                    self.client.publish(self.light_refresh_topic, "brightness_changed")
+                return
+
+            brightness_only = (
+                "brightness" in payload
+                and not color_changed
+                and "text" not in payload
+                and not ("x" in payload and "y" in payload)
+            )
+            if brightness_only:
+                state_payload = payload.copy()
+                state_payload["brightness"] = self.current_brightness
+                self.client.publish(
+                    self.light_state_topic,
+                    json.dumps(state_payload),
+                    retain=True
+                )
+                if brightness_changed:
+                    self.client.publish(self.light_refresh_topic, "brightness_changed")
                 return
 
             if "text" in payload:
@@ -221,6 +258,8 @@ class MQTTHandler:
             state_payload = payload.copy()
             state_payload["brightness"] = self.current_brightness
             self.client.publish(self.light_state_topic, json.dumps(state_payload), retain=True)
+            if brightness_changed:
+                self.client.publish(self.light_refresh_topic, "brightness_changed")
 
         except Exception as e:
             print(f"Error handling MQTT message on {msg.topic}: {e}")

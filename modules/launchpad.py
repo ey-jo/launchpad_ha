@@ -40,6 +40,9 @@ class LaunchpadController:
         else:
             self.lp.LedCtrlXYByCode(x, y, colorcode)
 
+    def set_led_xy_by_code(self, x: int, y: int, color_code: int) -> None:
+        self.lp.LedCtrlXYByCode(x, y, color_code)
+
     def display_text(
         self, text: str, r: int, g: int, b: int, brightness: int,
         direction_str: str

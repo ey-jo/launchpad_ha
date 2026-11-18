@@ -111,8 +111,11 @@ reconnects, when the controlled entity changes, and when the selected
 **Lock entity** unlocks. For lock-based refreshes, select the Launchpad
 **Button Lock** entity. With a lock selected, LEDs are cleared while locked
 and refreshed on unlock; without one, they still refresh on reconnect and
-when the controlled entity changes. If you use a custom availability topic,
-set it in the blueprint to match the controller's topic.
+when the controlled entity changes. Brightness-only changes to the Matrix
+Display light refresh all these automations without filling the whole board.
+If you use a custom availability topic, set it in the blueprint to match the
+controller's topic. For a custom `DEVICE_ID`, also set the **Brightness refresh
+topic** to match the controller.
 
 In button mode, lights use the configured single-button value, with 0% turning
 them off. The automation mirrors an entity's current value on the selected
@@ -172,7 +175,8 @@ The MQTT device creates a **Button Lock** entity, a **Lock Button** selector,
 and an **Auto Lock Timer** number entity. The controller starts locked and
 shows the selected lock button in red. Hold the selected lock button to
 unlock; it lights green for three seconds. Single-press it to lock again,
-which lights it red. While locked, button events are suppressed. Select any
+the board clears, and the lock button lights red for three seconds. While
+locked, button events are suppressed. Select any
 button or **Disabled** in Home Assistant. Do not assign the active lock button
 to an automation unless you change or disable the lock button. The auto-lock
 timer is in seconds; set it to `0` to disable automatic locking. The Matrix

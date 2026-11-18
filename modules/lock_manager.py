@@ -68,7 +68,8 @@ class LockManager:
         self.light_brightness = MAX_LIGHT_BRIGHTNESS
         self.locked = True
         self.auto_lock_deadline = None
-        self.unlock_indicator_deadline = None
+        self.lock_indicator_deadline = None
+        self.lock_indicator_color = (255, 0, 0)
         self.load_settings()
 
     def publish_discovery(self):
@@ -135,20 +136,18 @@ class LockManager:
             str(self.auto_lock_seconds),
             retain=True
         )
+        if self.locked:
+            self.client.publish(
+                self.matrix_command_topic,
+                json.dumps({"state": "OFF"})
+            )
         self.publish_lock_indicator()
 
-    def publish_lock_indicator(self, color: tuple[int, int, int] | None = None):
+    def publish_lock_indicator(self):
         if self.lock_button == "Disabled":
             return
 
-        if color is None:
-            if self.locked:
-                color = (255, 0, 0)
-            elif (self.unlock_indicator_deadline is not None
-                  and time.monotonic() < self.unlock_indicator_deadline):
-                color = (0, 255, 0)
-            else:
-                color = (0, 0, 0)
+        color = self.lock_indicator_color
 
         special_coords = {
             button: coordinates
@@ -274,9 +273,8 @@ class LockManager:
 
     def set_locked(self, locked: bool):
         self.locked = locked
-        self.unlock_indicator_deadline = (
-            time.monotonic() + 3 if not locked else None
-        )
+        self.lock_indicator_color = (255, 0, 0) if locked else (0, 255, 0)
+        self.lock_indicator_deadline = time.monotonic() + 3
         self.reset_auto_lock_deadline()
         self.publish_state()
 
@@ -287,10 +285,11 @@ class LockManager:
             self.auto_lock_deadline = None
 
     def check_auto_lock(self):
-        if (self.unlock_indicator_deadline is not None
-                and time.monotonic() >= self.unlock_indicator_deadline):
-            self.unlock_indicator_deadline = None
-            self.publish_lock_indicator((0, 0, 0))
+        if (self.lock_indicator_deadline is not None
+                and time.monotonic() >= self.lock_indicator_deadline):
+            self.lock_indicator_deadline = None
+            self.lock_indicator_color = (0, 0, 0)
+            self.publish_lock_indicator()
 
         if self.auto_lock_deadline is not None and time.monotonic() >= self.auto_lock_deadline:
             print("Launchpad locked by auto-lock timer.")

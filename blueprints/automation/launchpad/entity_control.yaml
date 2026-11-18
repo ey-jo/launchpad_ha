@@ -22,6 +22,12 @@ blueprint:
       default: device/launchpad/availability
       selector:
         text:
+    brightness_refresh_topic:
+      name: Brightness refresh topic
+      description: Topic used to redraw all entity LEDs after the Matrix Display brightness changes.
+      default: device/launchpad/light/refresh
+      selector:
+        text:
     entity:
       name: Entity
       selector:
@@ -225,6 +231,9 @@ trigger:
     topic: !input availability_topic
     payload: "online"
     id: launchpad_online
+  - platform: mqtt
+    topic: !input brightness_refresh_topic
+    id: brightness_refresh
   - platform: template
     value_template: >
       {{ selected_lock_entity != ''
@@ -255,6 +264,14 @@ condition:
 
 action:
   - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'lock_locked' }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: "{{ selected_command_topic }}"
+              payload: '{"state": "OFF"}'
       - conditions:
           - condition: template
             value_template: "{{ trigger.id == 'button_event' and entity_domain in ['cover', 'fan', 'light'] }}"
@@ -481,11 +498,10 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
+              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
                  and entity_domain in ['cover', 'fan', 'light']
                  and (selected_lock_entity == ''
-                   or is_state(selected_lock_entity, 'unlocked')
-                   or trigger.id == 'lock_locked') }}
+                   or is_state(selected_lock_entity, 'unlocked')) }}
         sequence:
           - variables:
               state_value: >
@@ -535,9 +551,7 @@ action:
                            and pixel_y | int == single_coords[1] | int) }}
                     pixel_color: >
                       {% set active_count = (state_value | int * 8 / 100) | round(0) | int %}
-                      {% if trigger.id == 'lock_locked' %}
-                        {{ [0, 0, 0] }}
-                      {% elif selected_layout != 'button' and axis_position | int >= active_count %}
+                      {% if selected_layout != 'button' and axis_position | int >= active_count %}
                         {{ inactive_color }}
                       {% elif gradient_colors | length > 0 and selected_layout != 'button' %}
                         {% set color_index = (axis_position | int * (gradient_colors | length - 1) / 7) | round(0) | int %}
@@ -568,11 +582,10 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
+              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
                  and entity_domain == 'switch'
                  and (selected_lock_entity == ''
-                   or is_state(selected_lock_entity, 'unlocked')
-                   or trigger.id == 'lock_locked') }}
+                   or is_state(selected_lock_entity, 'unlocked')) }}
         sequence:
           - repeat:
               for_each: "{{ button_map_text.splitlines() }}"
@@ -597,12 +610,7 @@ action:
                       {{ (mapping_action == 'on' and is_state(target_entity, 'on'))
                          or (mapping_action == 'off' and is_state(target_entity, 'off'))
                          or (mapping_action == 'toggle' and is_state(target_entity, 'on')) }}
-                    mapping_color: >
-                      {% if trigger.id == 'lock_locked' %}
-                        {{ [0, 0, 0] }}
-                      {% else %}
-                        {{ active_color if mapping_active else inactive_color }}
-                      {% endif %}
+                    mapping_color: "{{ active_color if mapping_active else inactive_color }}"
                 - if:
                     - condition: template
                       value_template: "{{ mapping_button != '' }}"
@@ -625,11 +633,10 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
+              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
                  and entity_domain == 'select'
                  and (selected_lock_entity == ''
-                   or is_state(selected_lock_entity, 'unlocked')
-                   or trigger.id == 'lock_locked') }}
+                   or is_state(selected_lock_entity, 'unlocked')) }}
         sequence:
           - variables:
               option_colors: "{{ select_colors_text | from_json }}"
@@ -654,9 +661,7 @@ action:
                         {{ [parts[1] | int(0), parts[2] | int(0)] }}
                       {% else %}{{ [0,0] }}{% endif %}
                     mapping_color: >
-                      {% if trigger.id == 'lock_locked' %}
-                        {{ [0, 0, 0] }}
-                      {% elif states(target_entity) == mapping_option %}
+                      {% if states(target_entity) == mapping_option %}
                         {{ option_colors.get(mapping_option, active_color) }}
                       {% else %}
                         {{ inactive_color }}
