@@ -41,7 +41,10 @@ blueprint:
         boolean:
     lock_entity:
       name: Lock entity
-      description: Any Home Assistant lock entity used to restrict this automation when locked.
+      description: >
+        Select the Launchpad Button Lock entity to refresh this automation's
+        current LED state when the Launchpad unlocks. It also gates control
+        events when the unlocked-only option is enabled.
       default: ""
       selector:
         entity:
@@ -244,7 +247,8 @@ condition:
          or is_state(selected_lock_entity, 'unlocked') }}
   - condition: template
     value_template: >
-      {{ not only_when_profile_active
+      {{ trigger.id in ['lock_unlocked', 'lock_locked', 'launchpad_online']
+         or not only_when_profile_active
          or (selected_profile_entity != ''
            and required_profile | trim != ''
            and is_state(selected_profile_entity, required_profile | trim)) }}
@@ -479,8 +483,8 @@ action:
             value_template: >
               {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
                  and entity_domain in ['cover', 'fan', 'light']
-                 and selected_lock_entity != ''
-                 and (is_state(selected_lock_entity, 'unlocked')
+                 and (selected_lock_entity == ''
+                   or is_state(selected_lock_entity, 'unlocked')
                    or trigger.id == 'lock_locked') }}
         sequence:
           - variables:
@@ -566,8 +570,8 @@ action:
             value_template: >
               {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
                  and entity_domain == 'switch'
-                 and selected_lock_entity != ''
-                 and (is_state(selected_lock_entity, 'unlocked')
+                 and (selected_lock_entity == ''
+                   or is_state(selected_lock_entity, 'unlocked')
                    or trigger.id == 'lock_locked') }}
         sequence:
           - repeat:
@@ -623,8 +627,8 @@ action:
             value_template: >
               {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'lock_locked']
                  and entity_domain == 'select'
-                 and selected_lock_entity != ''
-                 and (is_state(selected_lock_entity, 'unlocked')
+                 and (selected_lock_entity == ''
+                   or is_state(selected_lock_entity, 'unlocked')
                    or trigger.id == 'lock_locked') }}
         sequence:
           - variables:

@@ -42,9 +42,11 @@ class LockManager:
         self.client = client
         self.device_info = device_info
         self.availability_topic = availability_topic
+        self.special_buttons = special_buttons
         self.config_topic = f"homeassistant/lock/{device_id}/button_lock/config"
         self.button_config_topic = f"homeassistant/select/{device_id}/lock_button/config"
         self.timer_config_topic = f"homeassistant/number/{device_id}/auto_lock_seconds/config"
+        self.matrix_command_topic = f"device/{device_id}/light/set"
         self.state_topic = f"device/{device_id}/lock/state"
         self.command_topic = f"device/{device_id}/lock/set"
         self.button_state_topic = f"device/{device_id}/lock/button/state"
@@ -66,6 +68,7 @@ class LockManager:
         self.light_brightness = MAX_LIGHT_BRIGHTNESS
         self.locked = True
         self.auto_lock_deadline = None
+        self.unlock_indicator_deadline = None
         self.load_settings()
 
     def publish_discovery(self):
@@ -131,6 +134,41 @@ class LockManager:
             self.timer_state_topic,
             str(self.auto_lock_seconds),
             retain=True
+        )
+        self.publish_lock_indicator()
+
+    def publish_lock_indicator(self, color: tuple[int, int, int] | None = None):
+        if self.lock_button == "Disabled":
+            return
+
+        if color is None:
+            if self.locked:
+                color = (255, 0, 0)
+            elif (self.unlock_indicator_deadline is not None
+                  and time.monotonic() < self.unlock_indicator_deadline):
+                color = (0, 255, 0)
+            else:
+                color = (0, 0, 0)
+
+        special_coords = {
+            button: coordinates
+            for coordinates, button in self.special_buttons.items()
+        }
+        if self.lock_button in special_coords:
+            x, y = special_coords[self.lock_button]
+        else:
+            _, x, y = self.lock_button.split("_")
+            x, y = int(x), int(y)
+
+        self.client.publish(
+            self.matrix_command_topic,
+            json.dumps({
+                "state": "ON",
+                "x": x,
+                "y": y,
+                "color": {"r": color[0], "g": color[1], "b": color[2]},
+                "lock_indicator": True
+            })
         )
 
     def on_message(self, message) -> bool:
@@ -236,6 +274,9 @@ class LockManager:
 
     def set_locked(self, locked: bool):
         self.locked = locked
+        self.unlock_indicator_deadline = (
+            time.monotonic() + 3 if not locked else None
+        )
         self.reset_auto_lock_deadline()
         self.publish_state()
 
@@ -246,6 +287,11 @@ class LockManager:
             self.auto_lock_deadline = None
 
     def check_auto_lock(self):
+        if (self.unlock_indicator_deadline is not None
+                and time.monotonic() >= self.unlock_indicator_deadline):
+            self.unlock_indicator_deadline = None
+            self.publish_lock_indicator((0, 0, 0))
+
         if self.auto_lock_deadline is not None and time.monotonic() >= self.auto_lock_deadline:
             print("Launchpad locked by auto-lock timer.")
             self.set_locked(True)

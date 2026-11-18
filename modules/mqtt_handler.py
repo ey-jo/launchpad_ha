@@ -165,6 +165,18 @@ class MQTTHandler:
                 return
 
             payload = json.loads(msg.payload.decode())
+            if payload.get("lock_indicator"):
+                color = payload["color"]
+                self.lp_ctrl.set_led_xy(
+                    int(payload["x"]),
+                    int(payload["y"]),
+                    int(color["r"]),
+                    int(color["g"]),
+                    int(color["b"]),
+                    self.current_brightness
+                )
+                return
+
             print(f"Received Command: {payload}")
 
             if "brightness" in payload:

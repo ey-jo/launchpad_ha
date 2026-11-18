@@ -108,10 +108,11 @@ The option is disabled by default.
 
 The automation redraws its configured LEDs when the Launchpad connects or
 reconnects, when the controlled entity changes, and when the selected
-**Lock entity** unlocks. LEDs are cleared when that lock becomes locked, and
-entity feedback is only shown while unlocked. Select a lock entity for LED
-feedback. If you use a custom availability topic, set it in the blueprint to
-match the controller's topic.
+**Lock entity** unlocks. For lock-based refreshes, select the Launchpad
+**Button Lock** entity. With a lock selected, LEDs are cleared while locked
+and refreshed on unlock; without one, they still refresh on reconnect and
+when the controlled entity changes. If you use a custom availability topic,
+set it in the blueprint to match the controller's topic.
 
 In button mode, lights use the configured single-button value, with 0% turning
 them off. The automation mirrors an entity's current value on the selected
@@ -168,17 +169,18 @@ YAML configuration.
 ### Lock and availability
 
 The MQTT device creates a **Button Lock** entity, a **Lock Button** selector,
-and an **Auto Lock Timer** number entity. The controller starts locked. Hold
-the selected lock button to unlock and single-press it to lock again; while
-locked, button events are suppressed. Select any button or **Disabled** in
-Home Assistant. Do not assign the active lock button to an automation unless
-you change or disable the lock button. The auto-lock timer is in seconds; set
-it to `0` to disable automatic locking. The Matrix Display light entity's
-brightness sets the Launchpad's master light level, which is applied to display
-actions and the connection indicator. This value and other settings changed in
-Home Assistant are saved in `device_settings.json` beside `main.py` and restored
-after a device restart; initial lock values can be set in `.env` using
-`LOCK_BUTTON` and `AUTO_LOCK_SECONDS`.
+and an **Auto Lock Timer** number entity. The controller starts locked and
+shows the selected lock button in red. Hold the selected lock button to
+unlock; it lights green for three seconds. Single-press it to lock again,
+which lights it red. While locked, button events are suppressed. Select any
+button or **Disabled** in Home Assistant. Do not assign the active lock button
+to an automation unless you change or disable the lock button. The auto-lock
+timer is in seconds; set it to `0` to disable automatic locking. The Matrix
+Display light entity's brightness sets the Launchpad's master light level,
+which is applied to display actions and the connection indicator. This value
+and other settings changed in Home Assistant are saved in `device_settings.json`
+beside `main.py` and restored after a device restart; initial lock values can
+be set in `.env` using `LOCK_BUTTON` and `AUTO_LOCK_SECONDS`.
 
 If the MQTT broker disconnects, all Launchpad LEDs blink red until it reconnects.
 Lock handling and persisted settings are implemented in
