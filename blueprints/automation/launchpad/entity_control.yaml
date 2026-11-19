@@ -6,28 +6,6 @@ blueprint:
     value bar and show the current value with LED feedback.
   domain: automation
   input:
-    event_topic:
-      name: Launchpad event topic
-      default: device/launchpad/event/state
-      selector:
-        text:
-    command_topic:
-      name: Launchpad command topic
-      default: device/launchpad/light/set
-      selector:
-        text:
-    availability_topic:
-      name: Launchpad availability topic
-      description: Topic used to detect when the Launchpad connects and redraw entity LEDs.
-      default: device/launchpad/availability
-      selector:
-        text:
-    brightness_refresh_topic:
-      name: Brightness refresh topic
-      description: Topic used to redraw all entity LEDs after the Matrix Display brightness changes.
-      default: device/launchpad/light/refresh
-      selector:
-        text:
     entity:
       name: Entity
       selector:
@@ -206,7 +184,6 @@ variables:
   only_when_profile_active: !input only_when_profile_active
   selected_profile_entity: !input profile_select_entity
   required_profile: !input required_profile
-  selected_command_topic: !input command_topic
   entity_domain: "{{ target_entity.split('.')[0] }}"
   selected_layout: !input layout
   selected_axis: !input axis_index
@@ -228,14 +205,14 @@ trigger_variables:
 
 trigger:
   - platform: mqtt
-    topic: !input event_topic
+    topic: device/launchpad/event/state
     id: button_event
   - platform: mqtt
-    topic: !input availability_topic
+    topic: device/launchpad/availability
     payload: "online"
     id: launchpad_online
   - platform: mqtt
-    topic: !input brightness_refresh_topic
+    topic: device/launchpad/light/refresh
     id: brightness_refresh
   - platform: template
     value_template: >
@@ -273,7 +250,7 @@ action:
         sequence:
           - action: mqtt.publish
             data:
-              topic: "{{ selected_command_topic }}"
+              topic: device/launchpad/light/set
               payload: '{"state": "OFF"}'
       - conditions:
           - condition: template
@@ -568,7 +545,7 @@ action:
                   then:
                     - action: mqtt.publish
                       data:
-                        topic: "{{ selected_command_topic }}"
+                        topic: device/launchpad/light/set
                         payload: >-
                           {{ {
                             'state': 'ON',
@@ -620,7 +597,7 @@ action:
                   then:
                     - action: mqtt.publish
                       data:
-                        topic: "{{ selected_command_topic }}"
+                        topic: device/launchpad/light/set
                         payload: >-
                           {{ {
                             'state': 'ON',
@@ -675,7 +652,7 @@ action:
                   then:
                     - action: mqtt.publish
                       data:
-                        topic: "{{ selected_command_topic }}"
+                        topic: device/launchpad/light/set
                         payload: >-
                           {{ {
                             'state': 'ON',
@@ -729,7 +706,7 @@ action:
                         sequence:
                           - action: mqtt.publish
                             data:
-                              topic: "{{ selected_command_topic }}"
+                              topic: device/launchpad/light/set
                               payload: >-
                                 {{ {
                                   'state': 'ON',

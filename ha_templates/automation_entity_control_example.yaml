@@ -3,8 +3,6 @@
   use_blueprint:
     path: launchpad/entity_control.yaml
     input:
-      event_topic: device/launchpad/event/state
-      command_topic: device/launchpad/light/set
       entity: cover.example_window
       layout: row
       axis_index: 0

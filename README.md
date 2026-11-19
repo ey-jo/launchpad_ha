@@ -113,10 +113,6 @@ reconnects, when the controlled entity changes, and when the selected
 and refreshed on unlock; without one, they still refresh on reconnect and
 when the controlled entity changes. Brightness-only changes to the Matrix
 Display light refresh all these automations without filling the whole board.
-If you use a custom availability topic, set it in the blueprint to match the
-controller's topic. For a custom `DEVICE_ID`, also set the **Brightness refresh
-topic** to match the controller.
-
 In button mode, lights use the configured single-button value, with 0% turning
 them off. The automation mirrors an entity's current value on the selected
 row/column: at 60%, about 60% of the eight LEDs are active. Choose an active
