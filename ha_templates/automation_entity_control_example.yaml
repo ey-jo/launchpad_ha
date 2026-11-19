@@ -1,7 +1,7 @@
 - id: launchpad_cover_row
   alias: "Launchpad: cover position from first row"
   use_blueprint:
-    path: launchpad/entity_control.yaml
+    path: launchpad/entity_control_analog.yaml
     input:
       entity: cover.example_window
       layout: row

@@ -265,17 +265,31 @@ class LockIndicatorTests(unittest.TestCase):
 
 class BlueprintRefreshTests(unittest.TestCase):
     def test_lock_entity_is_available_to_template_triggers(self):
+        blueprint_dir = (
+            Path(__file__).resolve().parents[1]
+            / "blueprints/automation"
+        )
+        for blueprint_path in blueprint_dir.glob("entity_control_*.yaml"):
+            with self.subTest(blueprint=blueprint_path.name):
+                blueprint = blueprint_path.read_text(encoding="utf-8")
+                self.assertIn(
+                    "trigger_variables:\n  selected_lock_entity: !input lock_entity",
+                    blueprint
+                )
+                self.assertIn("id: lock_unlocked", blueprint)
+
+    def test_switch_blueprint_toggles_on_single_click_by_default(self):
         blueprint_path = (
             Path(__file__).resolve().parents[1]
-            / "blueprints/automation/launchpad/entity_control.yaml"
+            / "blueprints/automation/entity_control_switch.yaml"
         )
         blueprint = blueprint_path.read_text(encoding="utf-8")
 
         self.assertIn(
-            "trigger_variables:\n  selected_lock_entity: !input lock_entity",
+            'default: "grid_0_0,single_click,toggle"',
             blueprint
         )
-        self.assertIn("id: lock_unlocked", blueprint)
+        self.assertIn("- action: switch.toggle", blueprint)
 
 
 if __name__ == "__main__":

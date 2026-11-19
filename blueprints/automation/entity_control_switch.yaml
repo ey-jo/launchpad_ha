@@ -1,0 +1,237 @@
+blueprint:
+  name: Launchpad switch control
+  description: >
+    Control and show the state of a switch with mapped Launchpad button presses.
+  domain: automation
+  input:
+    entity:
+      name: Entity
+      selector:
+        entity:
+          filter:
+            - domain: switch
+    only_when_unlocked:
+      name: Only run when the lock is unlocked
+      description: When enabled, the automation runs only while the selected Home Assistant lock entity is unlocked.
+      default: false
+      selector:
+        boolean:
+    lock_entity:
+      name: Lock entity
+      description: >
+        Select the Launchpad Button Lock entity to refresh this automation's
+        current LED state when the Launchpad unlocks. It also gates control
+        events when the unlocked-only option is enabled.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: lock
+    only_when_profile_active:
+      name: Only run when a profile is active
+      description: Enable the profile condition below to restrict this automation to a selected active profile.
+      default: false
+      selector:
+        boolean:
+    profile_select_entity:
+      name: Active profile select entity
+      description: MQTT select entity provided by the Launchpad controller.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    required_profile:
+      name: Required profile name
+      description: Exact profile name that must be selected for this automation to run.
+      default: ""
+      selector:
+        text:
+    button_mappings:
+      name: Switch mappings
+      description: >
+        One mapping per line as button,event_type[,on|off|toggle]. If the
+        action is omitted, the switch toggles. Example: grid_0_0,single_click
+      default: "grid_0_0,single_click,toggle"
+      selector:
+        text:
+          multiline: true
+    on_color:
+      name: Active color
+      description: LED color for a switch mapping that is active.
+      default: [0, 255, 0]
+      selector:
+        color_rgb:
+    off_color:
+      name: Inactive color
+      description: Use black [0, 0, 0] to leave inactive LEDs unlit.
+      default: [0, 0, 0]
+      selector:
+        color_rgb:
+
+variables:
+  target_entity: !input entity
+  only_when_unlocked: !input only_when_unlocked
+  selected_lock_entity: !input lock_entity
+  only_when_profile_active: !input only_when_profile_active
+  selected_profile_entity: !input profile_select_entity
+  required_profile: !input required_profile
+  entity_domain: "{{ target_entity.split('.')[0] }}"
+  button_map_text: !input button_mappings
+  active_color: !input on_color
+  inactive_color: !input off_color
+trigger_variables:
+  selected_lock_entity: !input lock_entity
+
+trigger:
+  - platform: mqtt
+    topic: device/launchpad/event/state
+    id: button_event
+  - platform: mqtt
+    topic: device/launchpad/availability
+    payload: "online"
+    id: launchpad_online
+  - platform: mqtt
+    topic: device/launchpad/light/refresh
+    id: brightness_refresh
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'unlocked') }}
+    id: lock_unlocked
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'locked') }}
+    id: lock_locked
+  - platform: state
+    entity_id: !input entity
+    id: entity_state
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.id == 'lock_locked'
+         or not only_when_unlocked
+         or is_state(selected_lock_entity, 'unlocked') }}
+  - condition: template
+    value_template: >
+      {{ trigger.id in ['lock_unlocked', 'lock_locked', 'launchpad_online']
+         or not only_when_profile_active
+         or (selected_profile_entity != ''
+           and required_profile | trim != ''
+           and is_state(selected_profile_entity, required_profile | trim)) }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'lock_locked' }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: device/launchpad/light/set
+              payload: '{"state": "OFF"}'
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'button_event' and entity_domain == 'switch' }}"
+          - condition: template
+            value_template: >
+              {% set ns = namespace(match=false) %}
+              {% for line in button_map_text.splitlines() %}
+                {% set parts = line.split(',') %}
+                {% if parts | length >= 2
+                      and parts[0] | trim == trigger.payload_json.button
+                      and parts[1] | trim == trigger.payload_json.event_type %}
+                  {% set ns.match = true %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.match }}
+        sequence:
+          - variables:
+              matched_action: >
+                {% set ns = namespace(value='') %}
+                {% for line in button_map_text.splitlines() %}
+                  {% set parts = line.split(',') %}
+                  {% if parts | length >= 2
+                        and parts[0] | trim == trigger.payload_json.button
+                        and parts[1] | trim == trigger.payload_json.event_type %}
+                    {% set ns.value = parts[2] | trim if parts | length > 2 else 'toggle' %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.value }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ matched_action == 'on' }}"
+                sequence:
+                  - action: switch.turn_on
+                    target:
+                      entity_id: !input entity
+              - conditions:
+                  - condition: template
+                    value_template: "{{ matched_action == 'off' }}"
+                sequence:
+                  - action: switch.turn_off
+                    target:
+                      entity_id: !input entity
+              - conditions:
+                  - condition: template
+                    value_template: "{{ matched_action == 'toggle' }}"
+                sequence:
+                  - action: switch.toggle
+                    target:
+                      entity_id: !input entity
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
+                 and entity_domain == 'switch'
+                 and (selected_lock_entity == ''
+                   or is_state(selected_lock_entity, 'unlocked')) }}
+        sequence:
+          - repeat:
+              for_each: "{{ button_map_text.splitlines() }}"
+              sequence:
+                - variables:
+                    mapping_parts: "{{ repeat.item.split(',') }}"
+                    mapping_button: "{{ mapping_parts[0] | trim }}"
+                    mapping_action: "{{ mapping_parts[2] | trim if mapping_parts | length > 2 else 'toggle' }}"
+                    button_coords: >
+                      {% set special = {
+                        'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
+                        'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
+                        'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
+                        'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
+                      } %}
+                      {% if mapping_button in special %}{{ special[mapping_button] }}
+                      {% elif mapping_button.startswith('grid_') %}
+                        {% set parts = mapping_button.split('_') %}
+                        {{ [parts[1] | int(0), parts[2] | int(0)] }}
+                      {% else %}{{ [0,0] }}{% endif %}
+                    mapping_active: >
+                      {{ (mapping_action == 'on' and is_state(target_entity, 'on'))
+                         or (mapping_action == 'off' and is_state(target_entity, 'off'))
+                         or (mapping_action == 'toggle' and is_state(target_entity, 'on')) }}
+                    mapping_color: "{{ active_color if mapping_active else inactive_color }}"
+                - if:
+                    - condition: template
+                      value_template: "{{ mapping_button != '' }}"
+                  then:
+                    - action: mqtt.publish
+                      data:
+                        topic: device/launchpad/light/set
+                        payload: >-
+                          {{ {
+                            'state': 'ON',
+                            'x': button_coords[0] | int,
+                            'y': button_coords[1] | int,
+                            'color': {
+                              'r': mapping_color[0] | int,
+                              'g': mapping_color[1] | int,
+                              'b': mapping_color[2] | int
+                            }
+                          } | tojson }}
+
+mode: restart

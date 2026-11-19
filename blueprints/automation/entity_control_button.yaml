@@ -1,0 +1,141 @@
+blueprint:
+  name: Launchpad button entity control
+  description: >
+    Press a Home Assistant button entity from a mapped Launchpad button and press type.
+  domain: automation
+  input:
+    entity:
+      name: Entity
+      selector:
+        entity:
+          filter:
+            - domain: button
+    only_when_unlocked:
+      name: Only run when the lock is unlocked
+      description: When enabled, the automation runs only while the selected Home Assistant lock entity is unlocked.
+      default: false
+      selector:
+        boolean:
+    lock_entity:
+      name: Lock entity
+      description: >
+        Select the Launchpad Button Lock entity to refresh this automation's
+        current LED state when the Launchpad unlocks. It also gates control
+        events when the unlocked-only option is enabled.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: lock
+    only_when_profile_active:
+      name: Only run when a profile is active
+      description: Enable the profile condition below to restrict this automation to a selected active profile.
+      default: false
+      selector:
+        boolean:
+    profile_select_entity:
+      name: Active profile select entity
+      description: MQTT select entity provided by the Launchpad controller.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    required_profile:
+      name: Required profile name
+      description: Exact profile name that must be selected for this automation to run.
+      default: ""
+      selector:
+        text:
+    button_mappings:
+      name: Button mappings
+      description: >
+        One mapping per line in the form button,event_type. Example:
+        grid_0_0,single_click
+      default: "grid_0_0,single_click"
+      selector:
+        text:
+          multiline: true
+
+variables:
+  target_entity: !input entity
+  only_when_unlocked: !input only_when_unlocked
+  selected_lock_entity: !input lock_entity
+  only_when_profile_active: !input only_when_profile_active
+  selected_profile_entity: !input profile_select_entity
+  required_profile: !input required_profile
+  entity_domain: "{{ target_entity.split('.')[0] }}"
+  button_map_text: !input button_mappings
+trigger_variables:
+  selected_lock_entity: !input lock_entity
+
+trigger:
+  - platform: mqtt
+    topic: device/launchpad/event/state
+    id: button_event
+  - platform: mqtt
+    topic: device/launchpad/availability
+    payload: "online"
+    id: launchpad_online
+  - platform: mqtt
+    topic: device/launchpad/light/refresh
+    id: brightness_refresh
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'unlocked') }}
+    id: lock_unlocked
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'locked') }}
+    id: lock_locked
+  - platform: state
+    entity_id: !input entity
+    id: entity_state
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.id == 'lock_locked'
+         or not only_when_unlocked
+         or is_state(selected_lock_entity, 'unlocked') }}
+  - condition: template
+    value_template: >
+      {{ trigger.id in ['lock_unlocked', 'lock_locked', 'launchpad_online']
+         or not only_when_profile_active
+         or (selected_profile_entity != ''
+           and required_profile | trim != ''
+           and is_state(selected_profile_entity, required_profile | trim)) }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'lock_locked' }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: device/launchpad/light/set
+              payload: '{"state": "OFF"}'
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'button_event' and entity_domain == 'button' }}"
+          - condition: template
+            value_template: >
+              {% set ns = namespace(match=false) %}
+              {% for line in button_map_text.splitlines() %}
+                {% set parts = line.split(',') %}
+                {% if parts | length >= 2
+                      and parts[0] | trim == trigger.payload_json.button
+                      and parts[1] | trim == trigger.payload_json.event_type %}
+                  {% set ns.match = true %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.match }}
+        sequence:
+          - action: button.press
+            target:
+              entity_id: !input entity
+
+mode: restart

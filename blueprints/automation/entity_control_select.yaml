@@ -1,0 +1,321 @@
+blueprint:
+  name: Launchpad select control
+  description: >
+    Choose options from a select entity with mapped Launchpad buttons and optional LED colors or sequences.
+  domain: automation
+  input:
+    entity:
+      name: Entity
+      selector:
+        entity:
+          filter:
+            - domain: select
+    only_when_unlocked:
+      name: Only run when the lock is unlocked
+      description: When enabled, the automation runs only while the selected Home Assistant lock entity is unlocked.
+      default: false
+      selector:
+        boolean:
+    lock_entity:
+      name: Lock entity
+      description: >
+        Select the Launchpad Button Lock entity to refresh this automation's
+        current LED state when the Launchpad unlocks. It also gates control
+        events when the unlocked-only option is enabled.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: lock
+    only_when_profile_active:
+      name: Only run when a profile is active
+      description: Enable the profile condition below to restrict this automation to a selected active profile.
+      default: false
+      selector:
+        boolean:
+    profile_select_entity:
+      name: Active profile select entity
+      description: MQTT select entity provided by the Launchpad controller.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: select
+    required_profile:
+      name: Required profile name
+      description: Exact profile name that must be selected for this automation to run.
+      default: ""
+      selector:
+        text:
+    select_mappings:
+      name: Select mappings
+      description: >
+        One mapping per line: button,event_type,option. Option names must
+        exactly match the select entity.
+      default: ""
+      selector:
+        text:
+          multiline: true
+    on_color:
+      name: Active color
+      description: Fallback LED color for options without a color override.
+      default: [0, 255, 0]
+      selector:
+        color_rgb:
+    off_color:
+      name: Inactive color
+      description: Use black [0, 0, 0] to leave inactive LEDs unlit.
+      default: [0, 0, 0]
+      selector:
+        color_rgb:
+    select_colors:
+      name: Select option colors
+      description: >
+        Optional JSON object mapping option names to RGB lists, e.g.
+        {"Home":[0,255,0],"Away":[255,0,0]}.
+      default: "{}"
+      selector:
+        text:
+          multiline: true
+    select_sequences:
+      name: Select option color sequences
+      description: Optional JSON object mapping option names to RGB lists for timed animation.
+      default: "{}"
+      selector:
+        text:
+          multiline: true
+    sequence_step_seconds:
+      name: Select sequence step duration
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 10
+          step: 0.1
+          unit_of_measurement: s
+          mode: box
+    sequence_cycles:
+      name: Number of select sequence cycles
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 50
+          step: 1
+          mode: box
+
+
+variables:
+  target_entity: !input entity
+  only_when_unlocked: !input only_when_unlocked
+  selected_lock_entity: !input lock_entity
+  only_when_profile_active: !input only_when_profile_active
+  selected_profile_entity: !input profile_select_entity
+  required_profile: !input required_profile
+  entity_domain: "{{ target_entity.split('.')[0] }}"
+  select_map_text: !input select_mappings
+  active_color: !input on_color
+  inactive_color: !input off_color
+  select_colors_text: !input select_colors
+  select_sequences_text: !input select_sequences
+  sequence_step: !input sequence_step_seconds
+  sequence_cycles_count: !input sequence_cycles
+
+trigger_variables:
+  selected_lock_entity: !input lock_entity
+
+trigger:
+  - platform: mqtt
+    topic: device/launchpad/event/state
+    id: button_event
+  - platform: mqtt
+    topic: device/launchpad/availability
+    payload: "online"
+    id: launchpad_online
+  - platform: mqtt
+    topic: device/launchpad/light/refresh
+    id: brightness_refresh
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'unlocked') }}
+    id: lock_unlocked
+  - platform: template
+    value_template: >
+      {{ selected_lock_entity != ''
+         and is_state(selected_lock_entity, 'locked') }}
+    id: lock_locked
+  - platform: state
+    entity_id: !input entity
+    id: entity_state
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.id == 'lock_locked'
+         or not only_when_unlocked
+         or is_state(selected_lock_entity, 'unlocked') }}
+  - condition: template
+    value_template: >
+      {{ trigger.id in ['lock_unlocked', 'lock_locked', 'launchpad_online']
+         or not only_when_profile_active
+         or (selected_profile_entity != ''
+           and required_profile | trim != ''
+           and is_state(selected_profile_entity, required_profile | trim)) }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'lock_locked' }}"
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: device/launchpad/light/set
+              payload: '{"state": "OFF"}'
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'button_event' and entity_domain == 'select' }}"
+          - condition: template
+            value_template: >
+              {% set ns = namespace(option='') %}
+              {% for line in select_map_text.splitlines() %}
+                {% set parts = line.split(',', 2) %}
+                {% if parts | length == 3
+                      and parts[0] | trim == trigger.payload_json.button
+                      and parts[1] | trim == trigger.payload_json.event_type %}
+                  {% set ns.option = parts[2] | trim %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.option in state_attr(target_entity, 'options') }}
+        sequence:
+          - variables:
+              selected_option: >
+                {% set ns = namespace(option='') %}
+                {% for line in select_map_text.splitlines() %}
+                  {% set parts = line.split(',', 2) %}
+                  {% if parts | length == 3
+                        and parts[0] | trim == trigger.payload_json.button
+                        and parts[1] | trim == trigger.payload_json.event_type %}
+                    {% set ns.option = parts[2] | trim %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.option }}
+          - action: select.select_option
+            target:
+              entity_id: !input entity
+            data:
+              option: "{{ selected_option }}"
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
+                 and entity_domain == 'select'
+                 and (selected_lock_entity == ''
+                   or is_state(selected_lock_entity, 'unlocked')) }}
+        sequence:
+          - variables:
+              option_colors: "{{ select_colors_text | from_json }}"
+              option_sequences: "{{ select_sequences_text | from_json }}"
+          - repeat:
+              for_each: "{{ select_map_text.splitlines() }}"
+              sequence:
+                - variables:
+                    mapping_parts: "{{ repeat.item.split(',', 2) }}"
+                    mapping_button: "{{ mapping_parts[0] | trim }}"
+                    mapping_option: "{{ mapping_parts[2] | trim if mapping_parts | length == 3 else '' }}"
+                    button_coords: >
+                      {% set special = {
+                        'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
+                        'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
+                        'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
+                        'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
+                      } %}
+                      {% if mapping_button in special %}{{ special[mapping_button] }}
+                      {% elif mapping_button.startswith('grid_') %}
+                        {% set parts = mapping_button.split('_') %}
+                        {{ [parts[1] | int(0), parts[2] | int(0)] }}
+                      {% else %}{{ [0,0] }}{% endif %}
+                    mapping_color: >
+                      {% if states(target_entity) == mapping_option %}
+                        {{ option_colors.get(mapping_option, active_color) }}
+                      {% else %}
+                        {{ inactive_color }}
+                      {% endif %}
+                - if:
+                    - condition: template
+                      value_template: "{{ mapping_button != '' }}"
+                  then:
+                    - action: mqtt.publish
+                      data:
+                        topic: device/launchpad/light/set
+                        payload: >-
+                          {{ {
+                            'state': 'ON',
+                            'x': button_coords[0] | int,
+                            'y': button_coords[1] | int,
+                            'color': {
+                              'r': mapping_color[0] | int,
+                              'g': mapping_color[1] | int,
+                              'b': mapping_color[2] | int
+                            }
+                          } | tojson }}
+          - variables:
+              selected_mapping: >
+                {% set ns = namespace(button='', option='') %}
+                {% for line in select_map_text.splitlines() %}
+                  {% set parts = line.split(',', 2) %}
+                  {% if parts | length == 3 and parts[2] | trim == states(target_entity) %}
+                    {% set ns.button = parts[0] | trim %}
+                    {% set ns.option = parts[2] | trim %}
+                  {% endif %}
+                {% endfor %}
+                {{ [ns.button, ns.option] }}
+              selected_mapping_button: "{{ selected_mapping[0] }}"
+              selected_mapping_option: "{{ selected_mapping[1] }}"
+              selected_mapping_sequence: "{{ option_sequences.get(selected_mapping_option, []) }}"
+              selected_mapping_coords: >
+                {% set special = {
+                  'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
+                  'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
+                  'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
+                  'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
+                } %}
+                {% if selected_mapping_button in special %}
+                  {{ special[selected_mapping_button] }}
+                {% elif selected_mapping_button.startswith('grid_') %}
+                  {% set parts = selected_mapping_button.split('_') %}
+                  {{ [parts[1] | int(0), parts[2] | int(0)] }}
+                {% else %}{{ [0,0] }}{% endif %}
+          - if:
+              - condition: template
+                value_template: >
+                  {{ trigger.id == 'entity_state'
+                     and selected_mapping_button != ''
+                     and selected_mapping_sequence | length > 0 }}
+            then:
+              - repeat:
+                  count: "{{ sequence_cycles_count | int }}"
+                  sequence:
+                    - repeat:
+                        for_each: "{{ selected_mapping_sequence }}"
+                        sequence:
+                          - action: mqtt.publish
+                            data:
+                              topic: device/launchpad/light/set
+                              payload: >-
+                                {{ {
+                                  'state': 'ON',
+                                  'x': selected_mapping_coords[0] | int,
+                                  'y': selected_mapping_coords[1] | int,
+                                  'color': {
+                                    'r': repeat.item[0] | int,
+                                    'g': repeat.item[1] | int,
+                                    'b': repeat.item[2] | int
+                                  }
+                                } | tojson }}
+                          - delay:
+                              seconds: "{{ sequence_step | float }}"
+
+mode: restart

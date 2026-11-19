@@ -77,16 +77,24 @@ profile. The MQTT **Active Profile** select entity lists profile names only;
 changing its selection also activates that profile. Profiles and the active
 selection are saved in `device_settings.json`.
 
-In the Launchpad entity control blueprint, enable **Only run when a profile is
-active**, select the **Active Profile** entity, and enter the exact **Required
-profile name**. The automation runs only while that profile is selected.
+In any Launchpad control blueprint, enable **Only run when a profile is active**,
+select the **Active Profile** entity, and enter the exact **Required profile
+name**. The automation runs only while that profile is selected.
 
 ### Control entities from the Launchpad
 
-Use the [Launchpad entity control blueprint](blueprints/automation/launchpad/entity_control.yaml)
-to create an automation for a **button**, **cover**, **fan**, **light**,
-**select**, or **switch** entity. The blueprint selects the entity domain and
-provides the domain-appropriate mapping fields.
+Choose the blueprint for the entity you want to control:
+
+- [Analog entity control](blueprints/automation/launchpad/entity_control_analog.yaml)
+  supports covers, fans, and lights, with row, column, or button layouts.
+- [Button control](blueprints/automation/launchpad/entity_control_button.yaml)
+  presses a button entity from mapped Launchpad presses.
+- [Switch control](blueprints/automation/launchpad/entity_control_switch.yaml)
+  toggles a switch on a single click by default, and supports explicit on/off
+  mappings.
+- [Select control](blueprints/automation/launchpad/entity_control_select.yaml)
+  maps Launchpad presses to select options and provides select-specific colors
+  and sequences.
 
 For covers, fans, and lights, choose **row**, **column**, or **button**:
 
@@ -121,13 +129,13 @@ optional JSON gradient can assign different active colors along the bar, for
 example
 `[[0,0,255],[0,255,0],[255,0,0]]`.
 
-Button and switch entities use explicit button mappings (one per line). Button
-mappings have the form `button,event_type`, for example
-`grid_0_0,single_click`. Switch mappings add the desired action:
+Button and switch blueprints use explicit button mappings (one per line).
+Button mappings have the form `button,event_type`, for example
+`grid_0_0,single_click`. Switch mappings can include an action:
 `button,event_type,on`, `button,event_type,off`, or
-`button,event_type,toggle`. Select mappings have the form
-`button,event_type,option`; option names must match the entity. Select options
-can have per-option colors via a JSON object such as
+`button,event_type,toggle`. If omitted, the switch toggles. Select mappings
+have the form `button,event_type,option`; option names must match the entity.
+Select options can have per-option colors via a JSON object such as
 `{"Home":[0,255,0],"Away":[255,0,0]}`. Optional per-option RGB sequences are
 also accepted as JSON, e.g.
 `{"Home":[[0,255,0],[0,0,255]]}`; the sequence runs for the configured number
