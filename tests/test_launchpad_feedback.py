@@ -302,6 +302,19 @@ class BlueprintRefreshTests(unittest.TestCase):
                     if line.strip().startswith("- ")
                 }
                 self.assertEqual(buttons, expected_buttons)
+                ordered_buttons = [
+                    line.strip()[2:]
+                    for line in button_selector.splitlines()
+                    if line.strip().startswith("- ")
+                ]
+                regular_buttons = sorted(
+                    (button for button in expected_buttons if button.startswith("grid_")),
+                    key=lambda button: tuple(map(int, button.split("_")[1:]))
+                )
+                self.assertEqual(
+                    ordered_buttons,
+                    regular_buttons + list(LAUNCHPAD_SPECIAL_BUTTONS.values())
+                )
 
     def test_switch_blueprint_selects_button_press_type_and_action(self):
         blueprint_path = (
