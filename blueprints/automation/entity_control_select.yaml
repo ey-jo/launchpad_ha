@@ -1,7 +1,7 @@
 blueprint:
   name: Launchpad select control
   description: >
-    Choose options from a select entity with mapped Launchpad buttons and optional LED colors or sequences.
+    Choose an option from a select entity with one Launchpad button and optional LED colors or sequences.
   domain: automation
   input:
     entity:
@@ -47,15 +47,108 @@ blueprint:
       default: ""
       selector:
         text:
-    select_mappings:
-      name: Select mappings
-      description: >
-        One mapping per line: button,event_type,option. Option names must
-        exactly match the select entity.
+    control_button:
+      name: Launchpad button
+      default: up
+      selector:
+        select:
+          options:
+            - up
+            - down
+            - left
+            - right
+            - session
+            - user_1
+            - user_2
+            - mixer
+            - grid_8_0
+            - grid_0_1
+            - grid_1_1
+            - grid_2_1
+            - grid_3_1
+            - grid_4_1
+            - grid_5_1
+            - grid_6_1
+            - grid_7_1
+            - volume
+            - grid_0_2
+            - grid_1_2
+            - grid_2_2
+            - grid_3_2
+            - grid_4_2
+            - grid_5_2
+            - grid_6_2
+            - grid_7_2
+            - pan
+            - grid_0_3
+            - grid_1_3
+            - grid_2_3
+            - grid_3_3
+            - grid_4_3
+            - grid_5_3
+            - grid_6_3
+            - grid_7_3
+            - send_a
+            - grid_0_4
+            - grid_1_4
+            - grid_2_4
+            - grid_3_4
+            - grid_4_4
+            - grid_5_4
+            - grid_6_4
+            - grid_7_4
+            - send_b
+            - grid_0_5
+            - grid_1_5
+            - grid_2_5
+            - grid_3_5
+            - grid_4_5
+            - grid_5_5
+            - grid_6_5
+            - grid_7_5
+            - stop
+            - grid_0_6
+            - grid_1_6
+            - grid_2_6
+            - grid_3_6
+            - grid_4_6
+            - grid_5_6
+            - grid_6_6
+            - grid_7_6
+            - mute
+            - grid_0_7
+            - grid_1_7
+            - grid_2_7
+            - grid_3_7
+            - grid_4_7
+            - grid_5_7
+            - grid_6_7
+            - grid_7_7
+            - solo
+            - grid_0_8
+            - grid_1_8
+            - grid_2_8
+            - grid_3_8
+            - grid_4_8
+            - grid_5_8
+            - grid_6_8
+            - grid_7_8
+            - record_arm
+    event_type:
+      name: Press type
+      default: single_click
+      selector:
+        select:
+          options:
+            - single_click
+            - double_click
+            - long_press
+    selected_option:
+      name: Select option
+      description: Exact option name from the selected select entity.
       default: ""
       selector:
         text:
-          multiline: true
     on_color:
       name: Active color
       description: Fallback LED color for options without a color override.
@@ -113,7 +206,9 @@ variables:
   selected_profile_entity: !input profile_select_entity
   required_profile: !input required_profile
   entity_domain: "{{ target_entity.split('.')[0] }}"
-  select_map_text: !input select_mappings
+  selected_button: !input control_button
+  selected_event: !input event_type
+  selected_option: !input selected_option
   active_color: !input on_color
   inactive_color: !input off_color
   select_colors_text: !input select_colors
@@ -178,29 +273,10 @@ action:
             value_template: "{{ trigger.id == 'button_event' and entity_domain == 'select' }}"
           - condition: template
             value_template: >
-              {% set ns = namespace(option='') %}
-              {% for line in select_map_text.splitlines() %}
-                {% set parts = line.split(',', 2) %}
-                {% if parts | length == 3
-                      and parts[0] | trim == trigger.payload_json.button
-                      and parts[1] | trim == trigger.payload_json.event_type %}
-                  {% set ns.option = parts[2] | trim %}
-                {% endif %}
-              {% endfor %}
-              {{ ns.option in state_attr(target_entity, 'options') }}
+              {{ trigger.payload_json.button == selected_button
+                 and trigger.payload_json.event_type == selected_event
+                 and selected_option in state_attr(target_entity, 'options') }}
         sequence:
-          - variables:
-              selected_option: >
-                {% set ns = namespace(option='') %}
-                {% for line in select_map_text.splitlines() %}
-                  {% set parts = line.split(',', 2) %}
-                  {% if parts | length == 3
-                        and parts[0] | trim == trigger.payload_json.button
-                        and parts[1] | trim == trigger.payload_json.event_type %}
-                    {% set ns.option = parts[2] | trim %}
-                  {% endif %}
-                {% endfor %}
-                {{ ns.option }}
           - action: select.select_option
             target:
               entity_id: !input entity
@@ -218,81 +294,45 @@ action:
           - variables:
               option_colors: "{{ select_colors_text | from_json }}"
               option_sequences: "{{ select_sequences_text | from_json }}"
-          - repeat:
-              for_each: "{{ select_map_text.splitlines() }}"
-              sequence:
-                - variables:
-                    mapping_parts: "{{ repeat.item.split(',', 2) }}"
-                    mapping_button: "{{ mapping_parts[0] | trim }}"
-                    mapping_option: "{{ mapping_parts[2] | trim if mapping_parts | length == 3 else '' }}"
-                    button_coords: >
-                      {% set special = {
-                        'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
-                        'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
-                        'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
-                        'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
-                      } %}
-                      {% if mapping_button in special %}{{ special[mapping_button] }}
-                      {% elif mapping_button.startswith('grid_') %}
-                        {% set parts = mapping_button.split('_') %}
-                        {{ [parts[1] | int(0), parts[2] | int(0)] }}
-                      {% else %}{{ [0,0] }}{% endif %}
-                    mapping_color: >
-                      {% if states(target_entity) == mapping_option %}
-                        {{ option_colors.get(mapping_option, active_color) }}
-                      {% else %}
-                        {{ inactive_color }}
-                      {% endif %}
-                - if:
-                    - condition: template
-                      value_template: "{{ mapping_button != '' }}"
-                  then:
-                    - action: mqtt.publish
-                      data:
-                        topic: device/launchpad/light/set
-                        payload: >-
-                          {{ {
-                            'state': 'ON',
-                            'x': button_coords[0] | int,
-                            'y': button_coords[1] | int,
-                            'color': {
-                              'r': mapping_color[0] | int,
-                              'g': mapping_color[1] | int,
-                              'b': mapping_color[2] | int
-                            }
-                          } | tojson }}
           - variables:
-              selected_mapping: >
-                {% set ns = namespace(button='', option='') %}
-                {% for line in select_map_text.splitlines() %}
-                  {% set parts = line.split(',', 2) %}
-                  {% if parts | length == 3 and parts[2] | trim == states(target_entity) %}
-                    {% set ns.button = parts[0] | trim %}
-                    {% set ns.option = parts[2] | trim %}
-                  {% endif %}
-                {% endfor %}
-                {{ [ns.button, ns.option] }}
-              selected_mapping_button: "{{ selected_mapping[0] }}"
-              selected_mapping_option: "{{ selected_mapping[1] }}"
-              selected_mapping_sequence: "{{ option_sequences.get(selected_mapping_option, []) }}"
-              selected_mapping_coords: >
+              button_coords: >
                 {% set special = {
                   'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
                   'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
                   'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
                   'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
                 } %}
-                {% if selected_mapping_button in special %}
-                  {{ special[selected_mapping_button] }}
-                {% elif selected_mapping_button.startswith('grid_') %}
-                  {% set parts = selected_mapping_button.split('_') %}
+                {% if selected_button in special %}{{ special[selected_button] }}
+                {% else %}
+                  {% set parts = selected_button.split('_') %}
                   {{ [parts[1] | int(0), parts[2] | int(0)] }}
-                {% else %}{{ [0,0] }}{% endif %}
+                {% endif %}
+              mapping_color: >
+                {% if states(target_entity) == selected_option %}
+                  {{ option_colors.get(selected_option, active_color) }}
+                {% else %}
+                  {{ inactive_color }}
+                {% endif %}
+              selected_mapping_sequence: "{{ option_sequences.get(selected_option, []) }}"
+          - action: mqtt.publish
+            data:
+              topic: device/launchpad/light/set
+              payload: >-
+                {{ {
+                  'state': 'ON',
+                  'x': button_coords[0] | int,
+                  'y': button_coords[1] | int,
+                  'color': {
+                    'r': mapping_color[0] | int,
+                    'g': mapping_color[1] | int,
+                    'b': mapping_color[2] | int
+                  }
+                } | tojson }}
           - if:
               - condition: template
                 value_template: >
                   {{ trigger.id == 'entity_state'
-                     and selected_mapping_button != ''
+                     and selected_option != ''
                      and selected_mapping_sequence | length > 0 }}
             then:
               - repeat:
@@ -307,8 +347,8 @@ action:
                               payload: >-
                                 {{ {
                                   'state': 'ON',
-                                  'x': selected_mapping_coords[0] | int,
-                                  'y': selected_mapping_coords[1] | int,
+                                  'x': button_coords[0] | int,
+                                  'y': button_coords[1] | int,
                                   'color': {
                                     'r': repeat.item[0] | int,
                                     'g': repeat.item[1] | int,

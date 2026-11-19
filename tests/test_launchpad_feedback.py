@@ -35,6 +35,7 @@ _provide_missing_runtime_modules()
 
 from modules.lock_manager import LockManager
 from modules.mqtt_handler import MQTTHandler
+from modules.launchpad import SPECIAL_BUTTONS as LAUNCHPAD_SPECIAL_BUTTONS
 
 
 SPECIAL_BUTTONS = {(0, 0): "up"}
@@ -278,17 +279,41 @@ class BlueprintRefreshTests(unittest.TestCase):
                 )
                 self.assertIn("id: lock_unlocked", blueprint)
 
-    def test_switch_blueprint_toggles_on_single_click_by_default(self):
+    def test_automation_blueprints_offer_every_launchpad_button(self):
+        blueprint_dir = (
+            Path(__file__).resolve().parents[1]
+            / "blueprints/automation"
+        )
+        expected_buttons = {
+            LAUNCHPAD_SPECIAL_BUTTONS.get((x, y), f"grid_{x}_{y}")
+            for x in range(9)
+            for y in range(9)
+        }
+
+        for blueprint_path in blueprint_dir.glob("entity_control_*.yaml"):
+            with self.subTest(blueprint=blueprint_path.name):
+                blueprint = blueprint_path.read_text(encoding="utf-8")
+                button_selector = blueprint.split(
+                    "    control_button:\n", 1
+                )[1].split("    event_type:\n", 1)[0]
+                buttons = {
+                    line.strip()[2:]
+                    for line in button_selector.splitlines()
+                    if line.strip().startswith("- ")
+                }
+                self.assertEqual(buttons, expected_buttons)
+
+    def test_switch_blueprint_selects_button_press_type_and_action(self):
         blueprint_path = (
             Path(__file__).resolve().parents[1]
             / "blueprints/automation/entity_control_switch.yaml"
         )
         blueprint = blueprint_path.read_text(encoding="utf-8")
 
-        self.assertIn(
-            'default: "grid_0_0,single_click,toggle"',
-            blueprint
-        )
+        self.assertIn("name: Press type", blueprint)
+        self.assertIn("name: Switch action", blueprint)
+        self.assertIn("default: toggle", blueprint)
+        self.assertNotIn("button_mappings:", blueprint)
         self.assertIn("- action: switch.toggle", blueprint)
 
 
