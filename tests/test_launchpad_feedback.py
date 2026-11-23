@@ -265,6 +265,26 @@ class LockIndicatorTests(unittest.TestCase):
 
 
 class BlueprintRefreshTests(unittest.TestCase):
+    def test_unlocked_only_blueprints_gate_by_option_consistently(self):
+        blueprint_dir = (
+            Path(__file__).resolve().parents[1]
+            / "blueprints/automation"
+        )
+        for blueprint_path in blueprint_dir.glob("entity_control_*.yaml"):
+            with self.subTest(blueprint=blueprint_path.name):
+                blueprint = blueprint_path.read_text(encoding="utf-8")
+                self.assertIn(
+                    "{{ only_when_unlocked\n"
+                    "                 and selected_lock_entity != ''\n"
+                    "                 and trigger.id == 'lock_locked' }}",
+                    blueprint
+                )
+                self.assertIn(
+                    "{{ trigger.id == 'lock_locked'\n"
+                    "         or not only_when_unlocked",
+                    blueprint
+                )
+
     def test_lock_entity_is_available_to_template_triggers(self):
         blueprint_dir = (
             Path(__file__).resolve().parents[1]

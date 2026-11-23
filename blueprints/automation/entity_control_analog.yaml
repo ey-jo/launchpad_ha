@@ -249,6 +249,7 @@ condition:
     value_template: >
       {{ trigger.id == 'lock_locked'
          or not only_when_unlocked
+         or selected_lock_entity == ''
          or is_state(selected_lock_entity, 'unlocked') }}
   - condition: template
     value_template: >
@@ -262,7 +263,10 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ trigger.id == 'lock_locked' }}"
+            value_template: >
+              {{ only_when_unlocked
+                 and selected_lock_entity != ''
+                 and trigger.id == 'lock_locked' }}
         sequence:
           - action: mqtt.publish
             data:
@@ -404,7 +408,8 @@ action:
             value_template: >
               {{ trigger.id in ['entity_state', 'launchpad_online', 'lock_unlocked', 'brightness_refresh']
                  and entity_domain in ['cover', 'fan', 'light']
-                 and (selected_lock_entity == ''
+                 and (not only_when_unlocked
+                   or selected_lock_entity == ''
                    or is_state(selected_lock_entity, 'unlocked')) }}
         sequence:
           - variables:
