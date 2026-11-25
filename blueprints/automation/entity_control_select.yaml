@@ -1,7 +1,7 @@
 blueprint:
   name: Launchpad select control
   description: >
-    Choose an option from a select entity with one Launchpad button and optional LED colors or sequences.
+    Choose select options with one Launchpad button or map up to eight options to a grid row or column.
   domain: automation
   input:
     entity:
@@ -143,9 +143,29 @@ blueprint:
             - single_click
             - double_click
             - long_press
+    mapping_layout:
+      name: Option mapping layout
+      description: Map one option to a button, or map options left-to-right in a row or top-to-bottom in a column.
+      default: single_button
+      selector:
+        select:
+          options:
+            - single_button
+            - row
+            - column
+    row_column_index:
+      name: Row or column index
+      description: Grid row (0-7) for row layout or grid column (0-7) for column layout.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 7
+          step: 1
+          mode: slider
     selected_option:
       name: Select option
-      description: Exact option name from the selected select entity.
+      description: Exact option name from the selected select entity. Used with the single-button layout.
       default: ""
       selector:
         text:
@@ -208,6 +228,8 @@ variables:
   entity_domain: "{{ target_entity.split('.')[0] }}"
   selected_button: !input control_button
   selected_event: !input event_type
+  mapping_layout: !input mapping_layout
+  row_column_index: !input row_column_index
   selected_option: !input selected_option
   active_color: !input on_color
   inactive_color: !input off_color
@@ -274,18 +296,52 @@ action:
               payload: '{"state": "OFF"}'
       - conditions:
           - condition: template
-            value_template: "{{ trigger.id == 'button_event' and entity_domain == 'select' }}"
+            value_template: >
+              {{ trigger.id == 'button_event'
+                 and entity_domain == 'select'
+                 and mapping_layout == 'single_button' }}
           - condition: template
             value_template: >
               {{ trigger.payload_json.button == selected_button
                  and trigger.payload_json.event_type == selected_event
-                 and selected_option in state_attr(target_entity, 'options') }}
+                 and selected_option in (state_attr(target_entity, 'options') or []) }}
         sequence:
           - action: select.select_option
             target:
               entity_id: !input entity
             data:
               option: "{{ selected_option }}"
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.id == 'button_event'
+                 and entity_domain == 'select'
+                 and mapping_layout in ['row', 'column']
+                 and trigger.payload_json.event_type == selected_event
+                 and 0 < (state_attr(target_entity, 'options') or []) | length <= 8 }}
+          - condition: template
+            value_template: >
+              {% set parts = trigger.payload_json.button.split('_') %}
+              {% if parts | length != 3 or parts[0] != 'grid' %}
+                false
+              {% elif mapping_layout == 'row' %}
+                {{ parts[2] | int(-1) == row_column_index | int + 1
+                   and 0 <= parts[1] | int(-1) < (state_attr(target_entity, 'options') or []) | length }}
+              {% else %}
+                {{ parts[1] | int(-1) == row_column_index | int
+                   and 1 <= parts[2] | int(-1) <= (state_attr(target_entity, 'options') or []) | length }}
+              {% endif %}
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: !input entity
+            data:
+              option: >
+                {{ (state_attr(target_entity, 'options') or [])[
+                  (trigger.payload_json.button.split('_')[1] | int)
+                  if mapping_layout == 'row'
+                  else (trigger.payload_json.button.split('_')[2] | int - 1)
+                ] }}
 
       - conditions:
           - condition: template
@@ -299,68 +355,147 @@ action:
           - variables:
               option_colors: "{{ select_colors_text | from_json }}"
               option_sequences: "{{ select_sequences_text | from_json }}"
-          - variables:
-              button_coords: >
-                {% set special = {
-                  'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
-                  'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
-                  'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
-                  'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
-                } %}
-                {% if selected_button in special %}{{ special[selected_button] }}
-                {% else %}
-                  {% set parts = selected_button.split('_') %}
-                  {{ [parts[1] | int(0), parts[2] | int(0)] }}
-                {% endif %}
-              mapping_color: >
-                {% if states(target_entity) == selected_option %}
-                  {{ option_colors.get(selected_option, active_color) }}
-                {% else %}
-                  {{ inactive_color }}
-                {% endif %}
-              selected_mapping_sequence: "{{ option_sequences.get(selected_option, []) }}"
-          - action: mqtt.publish
-            data:
-              topic: device/launchpad/light/set
-              payload: >-
-                {{ {
-                  'state': 'ON',
-                  'x': button_coords[0] | int,
-                  'y': button_coords[1] | int,
-                  'color': {
-                    'r': mapping_color[0] | int,
-                    'g': mapping_color[1] | int,
-                    'b': mapping_color[2] | int
-                  }
-                } | tojson }}
-          - if:
-              - condition: template
-                value_template: >
-                  {{ trigger.id == 'entity_state'
-                     and selected_option != ''
-                     and selected_mapping_sequence | length > 0 }}
-            then:
-              - repeat:
-                  count: "{{ sequence_cycles_count | int }}"
-                  sequence:
-                    - repeat:
-                        for_each: "{{ selected_mapping_sequence }}"
-                        sequence:
-                          - action: mqtt.publish
-                            data:
-                              topic: device/launchpad/light/set
-                              payload: >-
-                                {{ {
-                                  'state': 'ON',
-                                  'x': button_coords[0] | int,
-                                  'y': button_coords[1] | int,
-                                  'color': {
-                                    'r': repeat.item[0] | int,
-                                    'g': repeat.item[1] | int,
-                                    'b': repeat.item[2] | int
-                                  }
-                                } | tojson }}
-                          - delay:
-                              seconds: "{{ sequence_step | float }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ mapping_layout == 'single_button' }}"
+                sequence:
+                  - variables:
+                      button_coords: >
+                        {% set special = {
+                          'up':[0,0], 'down':[1,0], 'left':[2,0], 'right':[3,0],
+                          'session':[4,0], 'user_1':[5,0], 'user_2':[6,0], 'mixer':[7,0],
+                          'volume':[8,1], 'pan':[8,2], 'send_a':[8,3], 'send_b':[8,4],
+                          'stop':[8,5], 'mute':[8,6], 'solo':[8,7], 'record_arm':[8,8]
+                        } %}
+                        {% if selected_button in special %}{{ special[selected_button] }}
+                        {% else %}
+                          {% set parts = selected_button.split('_') %}
+                          {{ [parts[1] | int(0), parts[2] | int(0)] }}
+                        {% endif %}
+                      mapping_color: >
+                        {% if states(target_entity) == selected_option %}
+                          {{ option_colors.get(selected_option, active_color) }}
+                        {% else %}
+                          {{ inactive_color }}
+                        {% endif %}
+                      selected_mapping_sequence: "{{ option_sequences.get(selected_option, []) }}"
+                  - action: mqtt.publish
+                    data:
+                      topic: device/launchpad/light/set
+                      payload: >-
+                        {{ {
+                          'state': 'ON',
+                          'x': button_coords[0] | int,
+                          'y': button_coords[1] | int,
+                          'color': {
+                            'r': mapping_color[0] | int,
+                            'g': mapping_color[1] | int,
+                            'b': mapping_color[2] | int
+                          }
+                        } | tojson }}
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ trigger.id == 'entity_state'
+                             and selected_option != ''
+                             and selected_mapping_sequence | length > 0 }}
+                    then:
+                      - repeat:
+                          count: "{{ sequence_cycles_count | int }}"
+                          sequence:
+                            - repeat:
+                                for_each: "{{ selected_mapping_sequence }}"
+                                sequence:
+                                  - action: mqtt.publish
+                                    data:
+                                      topic: device/launchpad/light/set
+                                      payload: >-
+                                        {{ {
+                                          'state': 'ON',
+                                          'x': button_coords[0] | int,
+                                          'y': button_coords[1] | int,
+                                          'color': {
+                                            'r': repeat.item[0] | int,
+                                            'g': repeat.item[1] | int,
+                                            'b': repeat.item[2] | int
+                                          }
+                                        } | tojson }}
+                                  - delay:
+                                      seconds: "{{ sequence_step | float }}"
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ mapping_layout in ['row', 'column']
+                         and 0 < (state_attr(target_entity, 'options') or []) | length <= 8 }}
+                sequence:
+                  - repeat:
+                      for_each: "{{ state_attr(target_entity, 'options') or [] }}"
+                      sequence:
+                        - variables:
+                            option_coords: >
+                              {{ [repeat.index - 1, row_column_index | int + 1]
+                                 if mapping_layout == 'row'
+                                 else [row_column_index | int, repeat.index] }}
+                            option_color: >
+                              {% if states(target_entity) == repeat.item %}
+                                {{ option_colors.get(repeat.item, active_color) }}
+                              {% else %}
+                                {{ inactive_color }}
+                              {% endif %}
+                        - action: mqtt.publish
+                          data:
+                            topic: device/launchpad/light/set
+                            payload: >-
+                              {{ {
+                                'state': 'ON',
+                                'x': option_coords[0] | int,
+                                'y': option_coords[1] | int,
+                                'color': {
+                                  'r': option_color[0] | int,
+                                  'g': option_color[1] | int,
+                                  'b': option_color[2] | int
+                                }
+                              } | tojson }}
+                  - if:
+                      - condition: template
+                        value_template: >
+                          {{ trigger.id == 'entity_state'
+                             and states(target_entity) in (state_attr(target_entity, 'options') or [])
+                             and option_sequences.get(states(target_entity), []) | length > 0 }}
+                    then:
+                      - variables:
+                          selected_mapping_coords: >
+                            {{ [
+                              (state_attr(target_entity, 'options') or []).index(states(target_entity)),
+                              row_column_index | int + 1
+                            ] if mapping_layout == 'row' else [
+                              row_column_index | int,
+                              (state_attr(target_entity, 'options') or []).index(states(target_entity)) + 1
+                            ] }}
+                          selected_mapping_sequence: >
+                            {{ option_sequences.get(states(target_entity), []) }}
+                      - repeat:
+                          count: "{{ sequence_cycles_count | int }}"
+                          sequence:
+                            - repeat:
+                                for_each: "{{ selected_mapping_sequence }}"
+                                sequence:
+                                  - action: mqtt.publish
+                                    data:
+                                      topic: device/launchpad/light/set
+                                      payload: >-
+                                        {{ {
+                                          'state': 'ON',
+                                          'x': selected_mapping_coords[0] | int,
+                                          'y': selected_mapping_coords[1] | int,
+                                          'color': {
+                                            'r': repeat.item[0] | int,
+                                            'g': repeat.item[1] | int,
+                                            'b': repeat.item[2] | int
+                                          }
+                                        } | tojson }}
+                                  - delay:
+                                      seconds: "{{ sequence_step | float }}"
 
 mode: restart

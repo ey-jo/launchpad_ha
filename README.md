@@ -92,7 +92,7 @@ Choose the blueprint for the entity you want to control:
 - [Switch control](blueprints/automation/entity_control_switch.yaml)
   lets you choose a Launchpad button, press type, and on/off/toggle action.
 - [Select control](blueprints/automation/entity_control_select.yaml)
-  maps a selected Launchpad button and press type to a select option, with
+  maps a selected Launchpad button, row, or column to select options, with
   optional colors and sequences.
 
 For covers, fans, and lights, choose **row**, **column**, or **button**:
@@ -131,10 +131,13 @@ example
 All automation blueprints provide a button selector containing the Launchpad's
 function buttons and grid buttons. The button, switch, and select blueprints
 also let you choose a press type. For switch control, choose an on, off, or
-toggle action; toggle is selected by default. For select control, enter an
-option name that exactly matches the selected entity. Create one select
-automation for each button-option pair you want to configure.
-Select options can have per-option colors via a JSON object such as
+toggle action; toggle is selected by default. For select control, choose the
+single-button layout to map one button to an exact option name, or choose a row
+or column layout to map up to eight options in the entity's listed order. Row
+buttons map left-to-right starting at `grid_0_(row+1)`; column buttons map
+top-to-bottom starting at `grid_(column)_1`. Row/column layouts only act when
+the select entity has 1–8 options. Select options can have per-option colors
+via a JSON object such as
 `{"Home":[0,255,0],"Away":[255,0,0]}`. Optional per-option RGB sequences are
 also accepted as JSON, e.g.
 `{"Home":[[0,255,0],[0,0,255]]}`; the sequence runs for the configured number
